@@ -5,6 +5,7 @@ import {
   deleteRagSession,
   deleteResume,
   exportResumePdf,
+  reAnalyzeResume,
   getJdMatchResult,
   getKnowledgeById,
   getKnowledgeList,
@@ -107,6 +108,7 @@ export default function App() {
   const [jdResult, setJdResult] = useState<ReturnType<typeof normalizeJdMatch> | null>(null);
   const [resumeDeleting, setResumeDeleting] = useState(false);
   const [resumeExporting, setResumeExporting] = useState(false);
+  const [resumeReanalyzing, setResumeReanalyzing] = useState(false);
 
   const [knowledgeInputKey, setKnowledgeInputKey] = useState(0);
   const [knowledgeFile, setKnowledgeFile] = useState<File | null>(null);
@@ -400,6 +402,29 @@ export default function App() {
     }
   }
 
+  async function handleResumeReanalyze(): Promise<void> {
+    if (!selectedResumeId || !resumeSnapshot) {
+      return;
+    }
+
+    setResumeReanalyzing(true);
+    setResumeDetail(null);
+    try {
+      await reAnalyzeResume(selectedResumeId);
+      const finalStatus = await pollTaskUntilSettled('resume', selectedResumeId, resumeSnapshot.fileName);
+      if (finalStatus.taskStatus === 'COMPLETED') {
+        await loadResumeWorkspace(selectedResumeId);
+        pushNotice('简历重新分析已完成', 'success');
+      } else {
+        pushNotice('简历重新分析失败，请检查后端日志', 'danger');
+      }
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    } finally {
+      setResumeReanalyzing(false);
+    }
+  }
+
   async function handleJdMatch(): Promise<void> {
     if (!selectedResumeId || !resumeDetail) {
       pushNotice('先加载一份已完成分析的简历', 'danger');
@@ -679,12 +704,11 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-card">
-          <span className="eyebrow">Spring AI / React TS</span>
-          <h1>AI Interview Console</h1>
-          <p>一个对接你当前后端接口的前端工作台，覆盖简历分析、知识库、RAG 会话和任务追踪。</p>
+          <h1>AI Interview</h1>
+          <p>简历分析 · 知识库 · RAG 会话</p>
           <div className="brand-metrics">
-            <MetricTile label="知识库" value={knowledgeList.length.toString()} footnote="已接入文档" compact />
-            <MetricTile label="会话" value={(activeSessions.length + archivedSessions.length).toString()} footnote="RAG 空间" compact />
+            <MetricTile label="知识库" value={knowledgeList.length.toString()} footnote="文档" compact />
+            <MetricTile label="会话" value={(activeSessions.length + archivedSessions.length).toString()} footnote="RAG" compact />
           </div>
         </div>
 
@@ -712,20 +736,25 @@ export default function App() {
       <main className="main-panel">
         <section className="hero-panel">
           <div>
-            <span className="eyebrow">Workspace</span>
             <h2>
-              {activeView === 'overview' && '把后端能力直接变成可操作页面'}
-              {activeView === 'resume' && '围绕简历上传、分析、导出和 JD 匹配工作'}
+              {activeView === 'overview' && '总览'}
+              {activeView === 'resume' && '简历分析'}
+              {activeView === 'knowledge' && '知识库'}
+              {activeView === 'rag' && 'RAG 会话'}
+              {activeView === 'tasks' && '任务中心'}
+            </h2>
+            <p>
+              {activeView === 'overview' && '后端能力映射与快速操作入口'}
+              {activeView === 'resume' && '上传、分析、导出与 JD 匹配'}
               {activeView === 'knowledge' && '管理知识文档并准备会话素材'}
               {activeView === 'rag' && '创建会话、调整知识源并流式问答'}
-              {activeView === 'tasks' && '轮询异步任务，定位处理中或失败资源'}
-            </h2>
-            <p>这个前端按你当前 Spring Boot 控制器的接口能力实现，上传类任务会自动轮询，RAG 对话走 POST + SSE 流式消费。</p>
+              {activeView === 'tasks' && '查询异步任务处理状态'}
+            </p>
           </div>
           <div className="hero-stats">
-            <MetricTile label="最近简历" value={recentResumes.length.toString()} footnote="本地记忆" />
-            <MetricTile label="处理中任务" value={inFlightTaskCount.toString()} footnote="自动轮询" />
-            <MetricTile label="选中知识源" value={composerKnowledgeIds.length.toString()} footnote="会话草稿" />
+            <MetricTile label="简历" value={recentResumes.length.toString()} footnote="本地记录" compact />
+            <MetricTile label="进行中" value={inFlightTaskCount.toString()} footnote="任务" compact />
+            <MetricTile label="知识源" value={composerKnowledgeIds.length.toString()} footnote="已选" compact />
           </div>
         </section>
 
@@ -792,7 +821,7 @@ export default function App() {
           <section className="view-grid">
             <Panel title="上传与查找" subtitle="上传会自动轮询任务；也可以直接输入已有简历 ID 打开" actions={<button type="button" className="ghost-button" onClick={() => selectedResumeId && void loadResumeWorkspace(selectedResumeId)} disabled={!selectedResumeId || resumeLoading}>刷新当前简历</button>}>
               <div className="form-stack">
-                <label className="field-block"><span>上传简历</span><input key={resumeInputKey} type="file" accept=".pdf,.doc,.docx" onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)} /></label>
+                <label className="field-block"><span>上传简历</span><input key={resumeInputKey} type="file" accept=".pdf,.doc,.docx,.md" onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)} /></label>
                 <button type="button" className="primary-button" onClick={() => void handleResumeUpload()} disabled={resumeUploading}>{resumeUploading ? '正在上传与轮询...' : '上传并开始分析'}</button>
               </div>
 
@@ -819,6 +848,7 @@ export default function App() {
                   <div className="detail-row"><span>上传时间</span><strong>{formatDateTime(resumeSnapshot.uploadTime)}</strong></div>
                   {resumeTask ? <div className="detail-row"><span>任务状态</span><StatusChip label={resumeTask.taskStatus} tone={statusTone(resumeTask.taskStatus)} /></div> : null}
                   <div className="button-row">
+                    <button type="button" className="secondary-button" onClick={() => void handleResumeReanalyze()} disabled={!resumeSnapshot || resumeReanalyzing}>{resumeReanalyzing ? '分析中...' : '重新分析'}</button>
                     <button type="button" className="secondary-button" onClick={() => void handleResumeExport()} disabled={!resumeDetail || resumeExporting}>{resumeExporting ? '导出中...' : '导出 PDF'}</button>
                     <button type="button" className="danger-button" onClick={() => void handleResumeDelete()} disabled={!resumeSnapshot || resumeDeleting}>{resumeDeleting ? '删除中...' : '删除简历'}</button>
                   </div>

@@ -88,6 +88,12 @@ export async function getResumeDetail(resumeId: number): Promise<ResumeDetailRes
   return request<ResumeDetailResponse>(`/resume/detail/${resumeId}`);
 }
 
+export async function reAnalyzeResume(resumeId: number): Promise<void> {
+  await request<void>(`/resume/reAnalyze/${resumeId}`, {
+    method: 'POST',
+  });
+}
+
 export async function deleteResume(resumeId: number): Promise<void> {
   await request<void>(`/resume/delete/${resumeId}`, {
     method: 'DELETE',
