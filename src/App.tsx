@@ -6,6 +6,7 @@ import {
   deleteResume,
   exportResumePdf,
   reAnalyzeResume,
+  reVectorKnowledge,
   getJdMatchResult,
   getKnowledgeById,
   getKnowledgeList,
@@ -46,6 +47,11 @@ import {
   upsertTaskRecord,
 } from './utils';
 import { EmptyState, FeatureCard, MetricTile, Panel, StatusChip } from './ui';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 
 type View = 'overview' | 'resume' | 'knowledge' | 'rag' | 'tasks';
 type NoticeTone = 'neutral' | 'success' | 'danger';
@@ -87,6 +93,12 @@ function triggerDownload(blob: Blob, fileName: string): void {
   window.URL.revokeObjectURL(url);
 }
 
+const noticeToneClasses: Record<NoticeTone, string> = {
+  neutral: 'bg-indigo-soft border-indigo/15 text-indigo-text',
+  success: 'bg-success-soft border-success/15 text-emerald-600',
+  danger: 'bg-danger-soft border-danger/15 text-red-600',
+};
+
 export default function App() {
   const [activeView, setActiveView] = useState<View>('overview');
   const [notice, setNotice] = useState<NoticeState | null>(null);
@@ -121,6 +133,7 @@ export default function App() {
   const [selectedKnowledgeId, setSelectedKnowledgeId] = useState<number | null>(null);
   const [selectedKnowledge, setSelectedKnowledge] = useState<KnowledgeResponse | null>(null);
   const [knowledgeDeletingId, setKnowledgeDeletingId] = useState<number | null>(null);
+  const [knowledgeRevectoringId, setKnowledgeRevectoringId] = useState<number | null>(null);
   const [composerKnowledgeIds, setComposerKnowledgeIds] = useState<number[]>([]);
 
   const [sessionTab, setSessionTab] = useState<SessionStatus>('ACTIVE');
@@ -304,6 +317,7 @@ export default function App() {
       setSessionDetailLoading(false);
     }
   }
+
   async function handleResumeUpload(): Promise<void> {
     if (!resumeFile) {
       pushNotice('先选择一份简历文件', 'danger');
@@ -478,6 +492,20 @@ export default function App() {
     }
   }
 
+  async function handleKnowledgeReVector(knowledgeId: number, fileName: string): Promise<void> {
+    setKnowledgeRevectoringId(knowledgeId);
+    try {
+      await reVectorKnowledge(knowledgeId);
+      const finalStatus = await pollTaskUntilSettled('knowledge', knowledgeId, fileName);
+      await refreshKnowledgeList();
+      pushNotice(finalStatus.taskStatus === 'COMPLETED' ? '知识库重新向量化完成' : '重新向量化失败，请检查后端日志', finalStatus.taskStatus === 'COMPLETED' ? 'success' : 'danger');
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    } finally {
+      setKnowledgeRevectoringId(null);
+    }
+  }
+
   async function handleKnowledgeDelete(knowledgeId: number, fileName: string): Promise<void> {
     if (!window.confirm(`确定删除知识库 ${fileName} 吗？`)) {
       return;
@@ -533,6 +561,7 @@ export default function App() {
       pushNotice((error as Error).message, 'danger');
     }
   }
+
   async function handleSessionKnowledgeUpdate(): Promise<void> {
     if (!selectedSessionDetail) {
       return;
@@ -701,49 +730,47 @@ export default function App() {
   const inFlightTaskCount = recentTasks.filter((item) => item.taskStatus === 'PENDING' || item.taskStatus === 'PROCESSING').length;
 
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="brand-card">
-          <h1>AI Interview</h1>
-          <p>简历分析 · 知识库 · RAG 会话</p>
-          <div className="brand-metrics">
+    <div className="grid grid-cols-1 lg:grid-cols-[256px_minmax(0,1fr)] min-h-screen">
+      {/* ─── Sidebar ─── */}
+      <aside className="bg-sidebar-dark sticky top-0 h-screen overflow-y-auto sidebar-scroll flex flex-col gap-1 px-3.5 py-5 border-r border-white/[0.04] max-lg:static max-lg:h-auto max-lg:flex-row max-lg:flex-wrap max-lg:items-center max-lg:px-4 max-lg:py-3 max-lg:gap-2">
+        <div className="px-3 pt-3.5 pb-4 mb-2 border-b border-sidebar-border-light max-lg:border-b-0 max-lg:pb-0 max-lg:mb-0">
+          <h1 className="text-[17px] font-bold text-sidebar-text-light tracking-tight">AI Interview</h1>
+          <p className="text-xs text-sidebar-muted-light mb-3 max-lg:hidden">简历分析 · 知识库 · RAG 会话</p>
+          <div className="grid grid-cols-2 gap-2 max-lg:hidden">
             <MetricTile label="知识库" value={knowledgeList.length.toString()} footnote="文档" compact />
             <MetricTile label="会话" value={(activeSessions.length + archivedSessions.length).toString()} footnote="RAG" compact />
           </div>
         </div>
 
-        <nav className="nav-list">
-          {[
-            ['overview', '总览'],
-            ['resume', '简历分析'],
-            ['knowledge', '知识库'],
-            ['rag', 'RAG 会话'],
-            ['tasks', '任务中心'],
-          ].map(([value, label]) => (
-            <button key={value} type="button" className={`nav-button ${activeView === value ? 'is-active' : ''}`} onClick={() => setActiveView(value as View)}>
+        <nav className="flex flex-col gap-0.5 mb-1 max-lg:flex-row max-lg:flex-wrap max-lg:gap-1">
+          {([['overview', '总览'], ['resume', '简历分析'], ['knowledge', '知识库'], ['rag', 'RAG 会话'], ['tasks', '任务中心']] as const).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              className={`flex justify-between items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors border-none cursor-pointer ${activeView === value ? 'bg-indigo-medium text-indigo-200' : 'bg-transparent text-sidebar-muted-light hover:bg-sidebar-surface hover:text-sidebar-text-light'}`}
+              onClick={() => setActiveView(value)}
+            >
               <span>{label}</span>
-              {value === 'tasks' && inFlightTaskCount > 0 ? <strong>{inFlightTaskCount}</strong> : null}
+              {value === 'tasks' && inFlightTaskCount > 0 ? <span className="min-w-5 px-2 py-0.5 rounded-full bg-indigo text-white text-[11px] font-semibold text-center">{inFlightTaskCount}</span> : null}
             </button>
           ))}
         </nav>
 
-        <div className="sidebar-note">
-          <span className="eyebrow">后端基线</span>
-          <p>默认通过 Vite 代理转发到 localhost:8080。独立部署接口时，改 VITE_API_BASE_URL 即可。</p>
-        </div>
       </aside>
 
-      <main className="main-panel">
-        <section className="hero-panel">
+      {/* ─── Main ─── */}
+      <main className="px-6 py-6 lg:px-8 lg:py-7 flex flex-col gap-4 max-w-[1280px]">
+        {/* Hero */}
+        <div className="flex items-center justify-between gap-4 px-5 py-3.5 bg-card border border-border rounded-xl shadow-sm max-lg:flex-col max-lg:items-start">
           <div>
-            <h2>
+            <h2 className="text-[17px] font-bold tracking-tight">
               {activeView === 'overview' && '总览'}
               {activeView === 'resume' && '简历分析'}
               {activeView === 'knowledge' && '知识库'}
               {activeView === 'rag' && 'RAG 会话'}
               {activeView === 'tasks' && '任务中心'}
             </h2>
-            <p>
+            <p className="text-xs text-muted-foreground mt-0.5">
               {activeView === 'overview' && '后端能力映射与快速操作入口'}
               {activeView === 'resume' && '上传、分析、导出与 JD 匹配'}
               {activeView === 'knowledge' && '管理知识文档并准备会话素材'}
@@ -751,18 +778,21 @@ export default function App() {
               {activeView === 'tasks' && '查询异步任务处理状态'}
             </p>
           </div>
-          <div className="hero-stats">
+          <div className="flex flex-row gap-2 flex-1 max-lg:w-full">
             <MetricTile label="简历" value={recentResumes.length.toString()} footnote="本地记录" compact />
             <MetricTile label="进行中" value={inFlightTaskCount.toString()} footnote="任务" compact />
             <MetricTile label="知识源" value={composerKnowledgeIds.length.toString()} footnote="已选" compact />
           </div>
-        </section>
+        </div>
 
-        {notice ? <div className={`notice tone-${notice.tone}`}>{notice.message}</div> : null}
+        {/* Notice */}
+        {notice ? <div className={`px-4 py-3 rounded-lg border text-[13px] font-medium ${noticeToneClasses[notice.tone]}`}>{notice.message}</div> : null}
+
+        {/* ═══ Overview ═══ */}
         {activeView === 'overview' ? (
-          <section className="view-grid">
+          <div className="grid gap-4">
             <Panel title="后端能力映射" subtitle="来自当前控制器与实体定义">
-              <div className="capability-grid">
+              <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
                 <FeatureCard title="简历分析链路" text="上传简历、查询状态、读取分析详情、删除、导出 PDF、再做 JD 匹配。" />
                 <FeatureCard title="知识库管理" text="上传知识文档并分类，查看列表、按分类筛选、删除、选作 RAG 会话资料。" />
                 <FeatureCard title="RAG Studio" text="创建/归档/删除会话、更新知识源和标题、按流式 SSE 消费回答。" />
@@ -771,7 +801,7 @@ export default function App() {
             </Panel>
 
             <Panel title="建议操作顺序" subtitle="按当前后端结构最顺的使用路径">
-              <ol className="steps-list">
+              <ol className="m-0 pl-5 flex flex-col gap-2 text-sm text-muted-foreground leading-relaxed">
                 <li>先上传简历，等分析任务完成后查看评分、摘要和改进建议。</li>
                 <li>再上传知识库文档，把常用面试资料或岗位资料选进会话草稿。</li>
                 <li>在 RAG 会话里创建新会话，用流式问答验证知识命中效果。</li>
@@ -779,17 +809,14 @@ export default function App() {
               </ol>
             </Panel>
 
-            <Panel title="最近简历" subtitle="后端没有简历列表接口，因此这里使用本地最近访问记录">
+            <Panel title="最近简历" subtitle="本地最近访问记录">
               {recentResumes.length === 0 ? (
                 <EmptyState title="还没有简历历史" text="上传成功后会把资源 ID 和状态保存在浏览器本地，方便再次打开。" />
               ) : (
-                <div className="list-stack">
+                <div className="flex flex-col gap-2">
                   {recentResumes.map((item) => (
-                    <button key={item.id} type="button" className="list-card" onClick={() => { setActiveView('resume'); void loadResumeWorkspace(item.id); }}>
-                      <div>
-                        <strong>{item.fileName}</strong>
-                        <span>ID #{item.id}</span>
-                      </div>
+                    <button key={item.id} type="button" className="flex items-center justify-between gap-3 px-3.5 py-3 border border-border bg-card rounded-lg w-full text-left transition-colors hover:border-primary hover:bg-indigo-soft cursor-pointer" onClick={() => { setActiveView('resume'); void loadResumeWorkspace(item.id); }}>
+                      <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">ID #{item.id}</span></div>
                       <StatusChip label={item.lastStatus} tone={statusTone(item.lastStatus)} />
                     </button>
                   ))}
@@ -801,39 +828,37 @@ export default function App() {
               {recentTasks.length === 0 ? (
                 <EmptyState title="暂无任务记录" text="上传简历或知识库之后，这里会逐步累积最近任务状态。" />
               ) : (
-                <div className="list-stack">
+                <div className="flex flex-col gap-2">
                   {recentTasks.slice(0, 6).map((item) => (
-                    <div key={`${item.resourceType}-${item.resourceId}`} className="task-row">
-                      <div>
-                        <strong>{item.fileName}</strong>
-                        <span>{item.resourceType} / #{item.resourceId}</span>
-                      </div>
+                    <div key={`${item.resourceType}-${item.resourceId}`} className="flex items-center justify-between gap-3 px-3.5 py-3 border border-border bg-card rounded-lg">
+                      <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.resourceType} / #{item.resourceId}</span></div>
                       <StatusChip label={item.taskStatus} tone={statusTone(item.taskStatus)} />
                     </div>
                   ))}
                 </div>
               )}
             </Panel>
-          </section>
+          </div>
         ) : null}
 
+        {/* ═══ Resume ═══ */}
         {activeView === 'resume' ? (
-          <section className="view-grid">
-            <Panel title="上传与查找" subtitle="上传会自动轮询任务；也可以直接输入已有简历 ID 打开" actions={<button type="button" className="ghost-button" onClick={() => selectedResumeId && void loadResumeWorkspace(selectedResumeId)} disabled={!selectedResumeId || resumeLoading}>刷新当前简历</button>}>
-              <div className="form-stack">
-                <label className="field-block"><span>上传简历</span><input key={resumeInputKey} type="file" accept=".pdf,.doc,.docx,.md" onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)} /></label>
-                <button type="button" className="primary-button" onClick={() => void handleResumeUpload()} disabled={resumeUploading}>{resumeUploading ? '正在上传与轮询...' : '上传并开始分析'}</button>
+          <div className="grid gap-4">
+            <Panel title="上传与查找" subtitle="上传会自动轮询任务；也可以直接输入已有简历 ID 打开" actions={<Button variant="outline" onClick={() => selectedResumeId && void loadResumeWorkspace(selectedResumeId)} disabled={!selectedResumeId || resumeLoading}>刷新当前简历</Button>}>
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">上传简历</span><input key={resumeInputKey} type="file" accept=".pdf,.doc,.docx,.md" className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/80 file:cursor-pointer" onChange={(event) => setResumeFile(event.target.files?.[0] ?? null)} /></div>
+                <Button onClick={() => void handleResumeUpload()} disabled={resumeUploading}>{resumeUploading ? '正在上传与轮询...' : '上传并开始分析'}</Button>
               </div>
 
-              <div className="form-inline">
-                <label className="field-block grow"><span>简历 ID</span><input value={manualResumeId} onChange={(event) => setManualResumeId(event.target.value)} placeholder="例如 12" /></label>
-                <button type="button" className="secondary-button" onClick={() => void handleResumeLookup()} disabled={resumeLoading}>{resumeLoading ? '加载中...' : '打开简历'}</button>
+              <div className="flex items-end gap-3 mt-3">
+                <div className="flex flex-col gap-1.5 flex-1"><span className="text-[13px] font-medium text-muted-foreground">简历 ID</span><Input value={manualResumeId} onChange={(event) => setManualResumeId(event.target.value)} placeholder="例如 12" /></div>
+                <Button variant="secondary" onClick={() => void handleResumeLookup()} disabled={resumeLoading}>{resumeLoading ? '加载中...' : '打开简历'}</Button>
               </div>
 
-              <div className="list-stack">
+              <div className="flex flex-col gap-2 mt-3">
                 {recentResumes.length === 0 ? <EmptyState title="暂无最近简历" text="后端当前没有简历列表接口，这里只展示最近使用过的资源。" /> : recentResumes.map((item) => (
-                  <button key={item.id} type="button" className="list-card" onClick={() => void loadResumeWorkspace(item.id)}>
-                    <div><strong>{item.fileName}</strong><span>{formatDateTime(item.updatedAt)}</span></div>
+                  <button key={item.id} type="button" className="flex items-center justify-between gap-3 px-3.5 py-3 border border-border bg-card rounded-lg w-full text-left transition-colors hover:border-primary hover:bg-indigo-soft cursor-pointer" onClick={() => void loadResumeWorkspace(item.id)}>
+                    <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{formatDateTime(item.updatedAt)}</span></div>
                     <StatusChip label={item.lastStatus} tone={statusTone(item.lastStatus)} />
                   </button>
                 ))}
@@ -842,15 +867,15 @@ export default function App() {
 
             <Panel title="当前状态" subtitle="任务状态、文件信息和操作入口">
               {resumeSnapshot ? (
-                <div className="detail-stack">
-                  <div className="detail-row"><span>文件名</span><strong>{resumeSnapshot.fileName}</strong></div>
-                  <div className="detail-row"><span>大小</span><strong>{formatBytes(resumeSnapshot.fileSize)}</strong></div>
-                  <div className="detail-row"><span>上传时间</span><strong>{formatDateTime(resumeSnapshot.uploadTime)}</strong></div>
-                  {resumeTask ? <div className="detail-row"><span>任务状态</span><StatusChip label={resumeTask.taskStatus} tone={statusTone(resumeTask.taskStatus)} /></div> : null}
-                  <div className="button-row">
-                    <button type="button" className="secondary-button" onClick={() => void handleResumeReanalyze()} disabled={!resumeSnapshot || resumeReanalyzing}>{resumeReanalyzing ? '分析中...' : '重新分析'}</button>
-                    <button type="button" className="secondary-button" onClick={() => void handleResumeExport()} disabled={!resumeDetail || resumeExporting}>{resumeExporting ? '导出中...' : '导出 PDF'}</button>
-                    <button type="button" className="danger-button" onClick={() => void handleResumeDelete()} disabled={!resumeSnapshot || resumeDeleting}>{resumeDeleting ? '删除中...' : '删除简历'}</button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">文件名</span><strong className="text-sm">{resumeSnapshot.fileName}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">大小</span><strong className="text-sm">{formatBytes(resumeSnapshot.fileSize)}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">上传时间</span><strong className="text-sm">{formatDateTime(resumeSnapshot.uploadTime)}</strong></div>
+                  {resumeTask ? <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">任务状态</span><StatusChip label={resumeTask.taskStatus} tone={statusTone(resumeTask.taskStatus)} /></div> : null}
+                  <div className="flex items-center gap-3 pt-1">
+                    <Button variant="secondary" onClick={() => void handleResumeReanalyze()} disabled={!resumeSnapshot || resumeReanalyzing}>{resumeReanalyzing ? '分析中...' : '重新分析'}</Button>
+                    <Button variant="secondary" onClick={() => void handleResumeExport()} disabled={!resumeDetail || resumeExporting}>{resumeExporting ? '导出中...' : '导出 PDF'}</Button>
+                    <Button variant="destructive" onClick={() => void handleResumeDelete()} disabled={!resumeSnapshot || resumeDeleting}>{resumeDeleting ? '删除中...' : '删除简历'}</Button>
                   </div>
                 </div>
               ) : <EmptyState title="尚未选择简历" text="上传一份新简历，或者从左侧最近记录里打开已有资源。" />}
@@ -858,10 +883,10 @@ export default function App() {
 
             {resumeDetail ? (
               <>
-                <Panel title="简历评分" subtitle="后端分析实体 + JSON 字段已在前端做了解析">
-                  <div className="score-hero">
-                    <div className="score-dial"><span>总分</span><strong>{resumeDetail.analysis.overallScore}</strong></div>
-                    <div className="score-grid">
+                <Panel title="简历评分" subtitle="AI 分析评分详情">
+                  <div className="flex items-center gap-6">
+                    <div className="score-dial"><span className="text-[11px] text-muted-foreground font-semibold uppercase tracking-wide">总分</span><strong className="text-[32px] font-extrabold text-indigo tracking-tight">{resumeDetail.analysis.overallScore}</strong></div>
+                    <div className="flex flex-wrap gap-2.5 flex-1">
                       <MetricTile label="内容完整度" value={resumeDetail.analysis.contentScore.toString()} footnote="/25" />
                       <MetricTile label="结构清晰度" value={resumeDetail.analysis.structureScore.toString()} footnote="/20" />
                       <MetricTile label="技能匹配度" value={resumeDetail.analysis.skillMatchScore.toString()} footnote="/25" />
@@ -871,70 +896,82 @@ export default function App() {
                   </div>
                 </Panel>
 
-                <Panel title="摘要与亮点" subtitle="适合快速过一遍简历结论">
-                  <div className="summary-box">{resumeDetail.analysis.summary}</div>
-                  <div className="pill-list">{resumeDetail.analysis.strengths.map((item, index) => <span key={`${item}-${index}`} className="highlight-pill">{item}</span>)}</div>
+                <Panel title="摘要与亮点" subtitle="简历结论概览">
+                  <div className="border border-border bg-muted/50 rounded-lg p-4 text-sm leading-7 text-muted-foreground mb-3">{resumeDetail.analysis.summary}</div>
+                  <div className="flex flex-wrap gap-1.5">{resumeDetail.analysis.strengths.map((item, index) => <span key={`${item}-${index}`} className="inline-flex items-center px-3 py-1 rounded-md text-[13px] font-medium bg-indigo-soft text-indigo-text">{item}</span>)}</div>
                 </Panel>
 
                 <Panel title="改进建议" subtitle="按问题与建议拆分展示">
                   {resumeDetail.analysis.suggestions.length === 0 ? <EmptyState title="暂无建议项" text="如果后端分析结果为空，这里会保持空态。" /> : (
-                    <div className="suggestion-grid">
+                    <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
                       {resumeDetail.analysis.suggestions.map((item, index) => (
-                        <article key={`${item.issue}-${index}`} className="suggestion-card">
-                          <header><span>{item.category}</span><StatusChip label={item.priority} tone={item.priority === '高' ? 'danger' : item.priority === '中' ? 'warn' : 'neutral'} /></header>
-                          <strong>{item.issue}</strong>
-                          <p>{item.recommendation}</p>
+                        <article key={`${item.issue}-${index}`} className="flex flex-col border border-border bg-card rounded-lg p-4 gap-2.5">
+                          <header className="flex items-center justify-between gap-2"><span className="text-xs text-muted-foreground font-medium">{item.category}</span><StatusChip label={item.priority} tone={item.priority === '高' ? 'danger' : item.priority === '中' ? 'warn' : 'neutral'} /></header>
+                          <strong className="text-sm">{item.issue}</strong>
+                          <p className="text-[13px]">{item.recommendation}</p>
                         </article>
                       ))}
                     </div>
                   )}
                 </Panel>
 
-                <Panel title="JD 匹配" subtitle="直接调用 /jd-match 接口">
-                  <div className="form-stack">
-                    <label className="field-block"><span>职位 JD</span><textarea value={jdContent} onChange={(event) => setJdContent(event.target.value)} rows={7} placeholder="粘贴岗位描述、任职要求或职位链接解析后的文本" /></label>
-                    <button type="button" className="primary-button" onClick={() => void handleJdMatch()} disabled={jdMatching}>{jdMatching ? '匹配中...' : '开始 JD 匹配'}</button>
+                <Panel title="JD 匹配" subtitle="职位描述匹配分析">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">职位 JD</span><Textarea value={jdContent} onChange={(event) => setJdContent(event.target.value)} rows={7} placeholder="粘贴岗位描述、任职要求或职位链接解析后的文本" /></div>
+                    <Button onClick={() => void handleJdMatch()} disabled={jdMatching}>{jdMatching ? '匹配中...' : '开始 JD 匹配'}</Button>
                   </div>
                   {jdResult ? (
-                    <div className="match-grid">
+                    <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(200px,1fr))] mt-4">
                       <MetricTile label="总体得分" value={jdResult.overallScore.toString()} footnote="整体判断" />
                       <MetricTile label="匹配度" value={jdResult.matchScore.toString()} footnote="岗位贴合" />
-                      <div className="match-column"><h4>缺失技能</h4>{jdResult.missingSkills.length === 0 ? <p className="muted-text">暂无明显缺项</p> : null}{jdResult.missingSkills.map((item, index) => <div key={`${item.skillName}-${index}`} className="skill-chip"><strong>{item.skillName}</strong><span>{item.skillLevel}</span></div>)}</div>
-                      <div className="match-column"><h4>优化建议</h4>{jdResult.suggestions.length === 0 ? <p className="muted-text">暂无匹配建议</p> : null}{jdResult.suggestions.map((item, index) => <article key={`${item.issue}-${index}`} className="mini-suggestion"><strong>{item.issue}</strong><p>{item.recommendation}</p></article>)}</div>
+                      <div className="flex flex-col border border-border bg-card rounded-lg p-4 gap-2"><h4 className="text-sm font-semibold">缺失技能</h4>{jdResult.missingSkills.length === 0 ? <p className="text-[13px] text-muted-foreground">暂无明显缺项</p> : null}{jdResult.missingSkills.map((item, index) => <div key={`${item.skillName}-${index}`} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-muted/50 border border-border text-[13px]"><strong className="text-[13px]">{item.skillName}</strong><span className="text-xs text-muted-foreground">{item.skillLevel}</span></div>)}</div>
+                      <div className="flex flex-col border border-border bg-card rounded-lg p-4 gap-2"><h4 className="text-sm font-semibold">优化建议</h4>{jdResult.suggestions.length === 0 ? <p className="text-[13px] text-muted-foreground">暂无匹配建议</p> : null}{jdResult.suggestions.map((item, index) => <article key={`${item.issue}-${index}`} className="rounded-md px-3 py-2.5 bg-muted/50 border border-border"><strong className="text-sm">{item.issue}</strong><p className="text-[13px]">{item.recommendation}</p></article>)}</div>
                     </div>
                   ) : null}
                 </Panel>
 
-                <Panel title="原始简历文本" subtitle="用于核对解析结果是否完整"><pre className="document-preview">{resumeDetail.resumeText}</pre></Panel>
+                <Panel title="原始简历文本" subtitle="用于核对解析结果是否完整"><pre className="border border-border bg-muted/50 rounded-lg p-4 max-h-[400px] overflow-auto text-[13px] leading-7 text-muted-foreground thin-scrollbar">{resumeDetail.resumeText}</pre></Panel>
               </>
-            ) : <Panel title="分析结果" subtitle="如果任务还没完成，这里会保持等待态"><EmptyState title={resumeSnapshot ? '分析结果尚未就绪' : '还没有简历数据'} text={resumeSnapshot ? '当前简历存在，但分析详情只会在任务 COMPLETED 后返回。' : '先上传或打开一份简历。'} /></Panel>}
-          </section>
+            ) : <Panel title="分析结果" subtitle="任务完成后将展示分析详情"><EmptyState title={resumeSnapshot ? '分析结果尚未就绪' : '还没有简历数据'} text={resumeSnapshot ? '当前简历存在，但分析详情只会在任务 COMPLETED 后返回。' : '先上传或打开一份简历。'} /></Panel>}
+          </div>
         ) : null}
+
+        {/* ═══ Knowledge ═══ */}
         {activeView === 'knowledge' ? (
-          <section className="view-grid">
+          <div className="grid gap-4">
             <Panel title="上传知识库" subtitle="文档上传后会触发解析与向量化">
-              <div className="form-stack">
-                <label className="field-block"><span>文档文件</span><input key={knowledgeInputKey} type="file" onChange={(event) => setKnowledgeFile(event.target.files?.[0] ?? null)} /></label>
-                <label className="field-block"><span>分类</span><input value={knowledgeCategory} onChange={(event) => setKnowledgeCategory(event.target.value)} placeholder="例如：面试题 / 岗位资料 / 八股" list="category-suggestions" /><datalist id="category-suggestions">{categoryOptions.map((item) => <option key={item} value={item} />)}</datalist></label>
-                <button type="button" className="primary-button" onClick={() => void handleKnowledgeUpload()} disabled={knowledgeUploading}>{knowledgeUploading ? '上传中...' : '上传并向量化'}</button>
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">文档文件</span><input key={knowledgeInputKey} type="file" className="text-sm file:mr-2 file:py-1.5 file:px-3 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/80 file:cursor-pointer" onChange={(event) => setKnowledgeFile(event.target.files?.[0] ?? null)} /></div>
+                <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">分类</span><Input value={knowledgeCategory} onChange={(event) => setKnowledgeCategory(event.target.value)} placeholder="例如：面试题 / 岗位资料 / 八股" list="category-suggestions" /><datalist id="category-suggestions">{categoryOptions.map((item) => <option key={item} value={item} />)}</datalist></div>
+                <Button onClick={() => void handleKnowledgeUpload()} disabled={knowledgeUploading}>{knowledgeUploading ? '上传中...' : '上传并向量化'}</Button>
               </div>
             </Panel>
 
-            <Panel title="文档库" subtitle="后端列表接口返回的是元数据，不包含正文内容" actions={<button type="button" className="ghost-button" onClick={() => void refreshKnowledgeList()} disabled={knowledgeLoading}>{knowledgeLoading ? '刷新中...' : '刷新列表'}</button>}>
-              <label className="field-block"><span>搜索</span><input value={knowledgeSearch} onChange={(event) => setKnowledgeSearch(event.target.value)} placeholder="按文件名、分类或类型过滤" /></label>
-              <div className="knowledge-grid">
+            <Panel title="文档库" subtitle="知识库文档列表" actions={<Button variant="outline" onClick={() => void refreshKnowledgeList()} disabled={knowledgeLoading}>{knowledgeLoading ? '刷新中...' : '刷新列表'}</Button>}>
+              <div className="flex flex-col gap-1.5 mb-3"><span className="text-[13px] font-medium text-muted-foreground">搜索</span><Input value={knowledgeSearch} onChange={(event) => setKnowledgeSearch(event.target.value)} placeholder="按文件名、分类或类型过滤" /></div>
+              <div className="grid gap-2.5 grid-cols-[repeat(auto-fit,minmax(240px,1fr))]">
                 {filteredKnowledge.length === 0 ? <EmptyState title="没有匹配的知识库" text="你可以先上传文档，或者换一个筛选关键字。" /> : filteredKnowledge.map((item) => {
                   const selectedForComposer = composerKnowledgeIds.includes(item.id);
                   const selectedForDetail = selectedKnowledgeId === item.id;
                   return (
-                    <article key={item.id} className={`knowledge-card ${selectedForDetail ? 'is-selected' : ''}`}>
-                      <div className="knowledge-head">
-                        <button type="button" className="knowledge-title" onClick={() => void loadKnowledgeDetail(item.id)}>{item.fileName}</button>
-                        <label className="checkbox-inline"><input type="checkbox" checked={selectedForComposer} onChange={() => setComposerKnowledgeIds((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [item.id, ...current].slice(0, 10))} /><span>加入草稿</span></label>
+                    <article key={item.id} className={`flex flex-col border bg-card rounded-lg p-4 gap-2.5 transition-colors hover:border-primary/30 ${selectedForDetail ? 'border-primary' : 'border-border'}`}>
+                      <div className="flex justify-between items-center gap-2">
+                        <button type="button" className="p-0 bg-transparent border-none text-left text-foreground font-semibold text-sm cursor-pointer" onClick={() => void loadKnowledgeDetail(item.id)}>{item.fileName}</button>
+                        <label className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-muted/50 border border-border cursor-pointer">
+                          <Checkbox checked={selectedForComposer} onCheckedChange={() => setComposerKnowledgeIds((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [item.id, ...current].slice(0, 10))} />
+                          <span className="text-xs text-muted-foreground">加入草稿</span>
+                        </label>
                       </div>
-                      <div className="meta-cloud"><span>{item.category}</span><span>{item.fileType}</span><span>{formatBytes(item.fileSize)}</span></div>
-                      <div className="detail-row"><span>上传时间</span><strong>{formatDateTime(item.uploadTime)}</strong></div>
-                      <button type="button" className="danger-link" onClick={() => void handleKnowledgeDelete(item.id, item.fileName)} disabled={knowledgeDeletingId === item.id}>{knowledgeDeletingId === item.id ? '删除中...' : '删除文档'}</button>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">{item.category}</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">{item.fileType}</span>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">{formatBytes(item.fileSize)}</span>
+                      </div>
+                      <div className="flex justify-between items-center gap-3 pb-2 border-b border-border/50"><span className="text-xs text-muted-foreground">上传时间</span><strong className="text-sm">{formatDateTime(item.uploadTime)}</strong></div>
+                      <div className="flex items-center gap-3">
+                        <button type="button" className="p-0 bg-transparent border-none text-left text-indigo-text text-[13px] cursor-pointer" onClick={() => void handleKnowledgeReVector(item.id, item.fileName)} disabled={knowledgeRevectoringId === item.id}>{knowledgeRevectoringId === item.id ? '向量化中...' : '重新向量化'}</button>
+                        <button type="button" className="p-0 bg-transparent border-none text-left text-destructive text-[13px] cursor-pointer" onClick={() => void handleKnowledgeDelete(item.id, item.fileName)} disabled={knowledgeDeletingId === item.id}>{knowledgeDeletingId === item.id ? '删除中...' : '删除文档'}</button>
+                      </div>
                     </article>
                   );
                 })}
@@ -943,77 +980,136 @@ export default function App() {
 
             <Panel title="当前选中知识" subtitle="你可以把它们直接带进 RAG 会话创建器">
               {selectedKnowledge ? (
-                <div className="detail-stack">
-                  <div className="detail-row"><span>文件名</span><strong>{selectedKnowledge.fileName}</strong></div>
-                  <div className="detail-row"><span>分类</span><strong>{selectedKnowledge.category}</strong></div>
-                  <div className="detail-row"><span>类型</span><strong>{selectedKnowledge.fileType}</strong></div>
-                  <div className="detail-row"><span>大小</span><strong>{formatBytes(selectedKnowledge.fileSize)}</strong></div>
-                  <div className="detail-row"><span>上传时间</span><strong>{formatDateTime(selectedKnowledge.uploadTime)}</strong></div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">文件名</span><strong className="text-sm">{selectedKnowledge.fileName}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">分类</span><strong className="text-sm">{selectedKnowledge.category}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">类型</span><strong className="text-sm">{selectedKnowledge.fileType}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">大小</span><strong className="text-sm">{formatBytes(selectedKnowledge.fileSize)}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">上传时间</span><strong className="text-sm">{formatDateTime(selectedKnowledge.uploadTime)}</strong></div>
                 </div>
-              ) : <EmptyState title="未选中文档" text="点击左侧文档名称查看元数据。正文内容目前后端没有返回接口。" />}
+              ) : <EmptyState title="未选中文档" text="点击左侧文档名称查看元数据。" />}
 
-              <div className="selection-strip"><div><span className="eyebrow">会话草稿</span><strong>{selectedComposerKnowledge.length} 份知识源</strong></div><button type="button" className="secondary-button" onClick={() => setActiveView('rag')}>去创建 RAG 会话</button></div>
-              <div className="pill-list">{selectedComposerKnowledge.map((item) => <span key={item.id} className="highlight-pill">{item.fileName}</span>)}</div>
+              <div className="flex justify-between items-center gap-3 mt-3 px-4 py-3 rounded-lg bg-indigo-soft border border-indigo/10">
+                <div><span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-text">会话草稿</span><strong className="block text-sm">{selectedComposerKnowledge.length} 份知识源</strong></div>
+                <Button variant="secondary" onClick={() => setActiveView('rag')}>去创建 RAG 会话</Button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">{selectedComposerKnowledge.map((item) => <span key={item.id} className="inline-flex items-center px-3 py-1 rounded-md text-[13px] font-medium bg-indigo-soft text-indigo-text">{item.fileName}</span>)}</div>
             </Panel>
-          </section>
+          </div>
         ) : null}
 
+        {/* ═══ RAG ═══ */}
         {activeView === 'rag' ? (
-          <section className="view-grid">
+          <div className="grid gap-4">
             <Panel title="新建会话" subtitle="会话会绑定选中的知识库">
-              <label className="field-block"><span>会话标题</span><input value={newSessionTitle} onChange={(event) => setNewSessionTitle(event.target.value)} placeholder="可留空，后端会自动生成标题" /></label>
-              <div className="select-list">{knowledgeList.length === 0 ? <EmptyState title="还没有知识库" text="先去知识库页面上传文档，再回来创建会话。" /> : knowledgeList.map((item) => <label key={item.id} className="select-row"><input type="checkbox" checked={composerKnowledgeIds.includes(item.id)} onChange={() => setComposerKnowledgeIds((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [item.id, ...current].slice(0, 10))} /><div><strong>{item.fileName}</strong><span>{item.category}</span></div></label>)}</div>
-              <button type="button" className="primary-button" onClick={() => void handleCreateSession()}>创建会话</button>
+              <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">会话标题</span><Input value={newSessionTitle} onChange={(event) => setNewSessionTitle(event.target.value)} placeholder="可留空，后端会自动生成标题" /></div>
+              <div className="flex flex-col gap-2 mt-3">{knowledgeList.length === 0 ? <EmptyState title="还没有知识库" text="先去知识库页面上传文档，再回来创建会话。" /> : knowledgeList.map((item) => (
+                <label key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/50 border border-border cursor-pointer">
+                  <Checkbox checked={composerKnowledgeIds.includes(item.id)} onCheckedChange={() => setComposerKnowledgeIds((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [item.id, ...current].slice(0, 10))} />
+                  <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.category}</span></div>
+                </label>
+              ))}</div>
+              <Button className="mt-3" onClick={() => void handleCreateSession()}>创建会话</Button>
             </Panel>
 
-            <Panel title="会话列表" subtitle="支持 ACTIVE / ARCHIVED 两个状态" actions={<button type="button" className="ghost-button" onClick={() => void refreshSessions()} disabled={sessionsLoading}>{sessionsLoading ? '刷新中...' : '刷新会话'}</button>}>
-              <div className="tab-row"><button type="button" className={`tab-button ${sessionTab === 'ACTIVE' ? 'is-active' : ''}`} onClick={() => setSessionTab('ACTIVE')}>活跃会话</button><button type="button" className={`tab-button ${sessionTab === 'ARCHIVED' ? 'is-active' : ''}`} onClick={() => setSessionTab('ARCHIVED')}>已归档</button></div>
-              <label className="field-block"><span>搜索会话</span><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="按标题或会话 ID 搜索" /></label>
-              <div className="list-stack">{visibleSessions.length === 0 ? <EmptyState title="没有会话" text="新建一条会话后会在这里出现。" /> : visibleSessions.map((item) => <button key={item.id} type="button" className={`list-card ${selectedSessionId === item.id ? 'is-active' : ''}`} onClick={() => void loadSessionDetail(item.id)}><div><strong>{item.title}</strong><span>#{item.id} · {item.knowledgeBaseIds.length} 个知识源</span></div><StatusChip label={item.status} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} /></button>)}</div>
+            <Panel title="会话列表" subtitle="支持 ACTIVE / ARCHIVED 两个状态" actions={<Button variant="outline" onClick={() => void refreshSessions()} disabled={sessionsLoading}>{sessionsLoading ? '刷新中...' : '刷新会话'}</Button>}>
+              <Tabs value={sessionTab} onValueChange={(v) => setSessionTab(v as SessionStatus)} className="mb-3">
+                <TabsList className="w-full">
+                  <TabsTrigger value="ACTIVE" className="flex-1">活跃会话</TabsTrigger>
+                  <TabsTrigger value="ARCHIVED" className="flex-1">已归档</TabsTrigger>
+                </TabsList>
+              </Tabs>
+              <div className="flex flex-col gap-1.5 mb-3"><span className="text-[13px] font-medium text-muted-foreground">搜索会话</span><Input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="按标题或会话 ID 搜索" /></div>
+              <div className="flex flex-col gap-2">{visibleSessions.length === 0 ? <EmptyState title="没有会话" text="新建一条会话后会在这里出现。" /> : visibleSessions.map((item) => (
+                <button key={item.id} type="button" className={`flex items-center justify-between gap-3 px-3.5 py-3 border bg-card rounded-lg w-full text-left transition-colors hover:border-primary hover:bg-indigo-soft cursor-pointer ${selectedSessionId === item.id ? 'border-primary bg-indigo-soft' : 'border-border'}`} onClick={() => void loadSessionDetail(item.id)}>
+                  <div className="flex flex-col"><strong className="text-sm">{item.title}</strong><span className="text-xs text-muted-foreground">#{item.id} · {item.knowledgeBaseIds.length} 个知识源</span></div>
+                  <StatusChip label={item.status} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} />
+                </button>
+              ))}</div>
             </Panel>
 
             <Panel title="会话工作台" subtitle="标题、知识源和对话都在这里管理">
               {selectedSessionDetail ? (
-                <div className="rag-layout">
-                  <div className="rag-settings">
-                    <div className="form-inline stretch-end"><label className="field-block grow"><span>标题</span><input value={sessionTitleDraft} onChange={(event) => setSessionTitleDraft(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} /></label><button type="button" className="secondary-button" onClick={() => void handleSessionTitleUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</button></div>
-                    <div className="button-row"><button type="button" className="secondary-button" onClick={() => void handleSessionStatusToggle()}>{selectedSessionDetail.status === 'ACTIVE' ? '归档会话' : '恢复会话'}</button><button type="button" className="danger-button" onClick={() => void handleSessionDelete()}>删除会话</button></div>
-                    <div className="detail-row"><span>创建时间</span><strong>{formatDateTime(selectedSessionDetail.createdAt)}</strong></div>
-                    <div className="detail-row"><span>更新时间</span><strong>{formatDateTime(selectedSessionDetail.updatedAt)}</strong></div>
-                    <div className="select-list compact-select-list">{knowledgeList.map((item) => <label key={item.id} className="select-row"><input type="checkbox" checked={sessionKnowledgeDraft.includes(item.id)} disabled={selectedSessionDetail.status !== 'ACTIVE'} onChange={() => setSessionKnowledgeDraft((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} /><div><strong>{item.fileName}</strong><span>{item.category}</span></div></label>)}</div>
-                    <button type="button" className="secondary-button" onClick={() => void handleSessionKnowledgeUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>更新知识源</button>
+                <div className="flex items-stretch gap-4 max-lg:flex-col">
+                  <div className="flex-1 flex flex-col gap-3">
+                    <div className="flex items-end gap-3"><div className="flex flex-col gap-1.5 flex-1"><span className="text-[13px] font-medium text-muted-foreground">标题</span><Input value={sessionTitleDraft} onChange={(event) => setSessionTitleDraft(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} /></div><Button variant="secondary" onClick={() => void handleSessionTitleUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</Button></div>
+                    <div className="flex items-center gap-3"><Button variant="secondary" onClick={() => void handleSessionStatusToggle()}>{selectedSessionDetail.status === 'ACTIVE' ? '归档会话' : '恢复会话'}</Button><Button variant="destructive" onClick={() => void handleSessionDelete()}>删除会话</Button></div>
+                    <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">创建时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.createdAt)}</strong></div>
+                    <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">更新时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.updatedAt)}</strong></div>
+                    <div className="flex flex-col gap-2 max-h-[220px] overflow-auto thin-scrollbar">{knowledgeList.map((item) => (
+                      <label key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/50 border border-border cursor-pointer">
+                        <Checkbox checked={sessionKnowledgeDraft.includes(item.id)} disabled={selectedSessionDetail.status !== 'ACTIVE'} onCheckedChange={() => setSessionKnowledgeDraft((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} />
+                        <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.category}</span></div>
+                      </label>
+                    ))}</div>
+                    <Button variant="secondary" onClick={() => void handleSessionKnowledgeUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>更新知识源</Button>
                   </div>
 
-                  <div className="chat-panel">
-                    <div className="chat-stream">{sessionDetailLoading ? <p className="muted-text">正在加载会话...</p> : null}{selectedSessionDetail.messages.map((message) => <article key={`${message.id}-${message.type}`} className={`message-bubble ${message.type === 'USER' ? 'is-user' : 'is-assistant'}`}><span>{message.type === 'USER' ? '你' : 'Assistant'}</span><p>{message.content || '...'}</p></article>)}<div ref={messageEndRef} /></div>
-                    <label className="field-block"><span>提问</span><textarea value={sessionQuestion} onChange={(event) => setSessionQuestion(event.target.value)} rows={4} disabled={selectedSessionDetail.status !== 'ACTIVE' || chatStreaming} placeholder={selectedSessionDetail.status === 'ACTIVE' ? '例如：根据这些资料帮我生成一轮前端面试问答' : '归档会话不可继续提问'} /></label>
-                    <button type="button" className="primary-button" onClick={() => void handleSendQuestion()} disabled={selectedSessionDetail.status !== 'ACTIVE' || chatStreaming}>{chatStreaming ? '流式生成中...' : '发送问题'}</button>
+                  <div className="flex-1 flex flex-col gap-3">
+                    <div className="min-h-[360px] max-h-[520px] overflow-auto flex flex-col gap-2.5 p-3.5 bg-muted/50 border border-border rounded-lg thin-scrollbar">
+                      {sessionDetailLoading ? <p className="text-[13px] text-muted-foreground">正在加载会话...</p> : null}
+                      {selectedSessionDetail.messages.map((message) => (
+                        <article key={`${message.id}-${message.type}`} className={`flex flex-col border rounded-lg px-4 py-3 gap-1.5 ${message.type === 'USER' ? 'bg-indigo-soft border-indigo/[0.12] ml-10' : 'bg-card border-border mr-10'}`}>
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{message.type === 'USER' ? '你' : 'Assistant'}</span>
+                          <p className="text-sm text-foreground">{message.content || '...'}</p>
+                        </article>
+                      ))}
+                      <div ref={messageEndRef} />
+                    </div>
+                    <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">提问</span><Textarea value={sessionQuestion} onChange={(event) => setSessionQuestion(event.target.value)} rows={4} disabled={selectedSessionDetail.status !== 'ACTIVE' || chatStreaming} placeholder={selectedSessionDetail.status === 'ACTIVE' ? '例如：根据这些资料帮我生成一轮前端面试问答' : '归档会话不可继续提问'} /></div>
+                    <Button onClick={() => void handleSendQuestion()} disabled={selectedSessionDetail.status !== 'ACTIVE' || chatStreaming}>{chatStreaming ? '流式生成中...' : '发送问题'}</Button>
                   </div>
                 </div>
               ) : <EmptyState title="未选择会话" text="从左侧挑一个会话，或先创建一个新的会话。" />}
             </Panel>
-          </section>
+          </div>
         ) : null}
 
+        {/* ═══ Tasks ═══ */}
         {activeView === 'tasks' ? (
-          <section className="view-grid">
-            <Panel title="手动查询" subtitle="后端当前支持 resume / knowledge 两种资源类型">
-              <div className="form-inline stretch-end"><label className="field-block"><span>资源类型</span><select value={taskLookupType} onChange={(event) => setTaskLookupType(event.target.value as ResourceType)}><option value="resume">resume</option><option value="knowledge">knowledge</option></select></label><label className="field-block grow"><span>资源 ID</span><input value={taskLookupId} onChange={(event) => setTaskLookupId(event.target.value)} placeholder="例如 3" /></label><button type="button" className="primary-button" onClick={() => void handleTaskLookup()} disabled={taskLookupLoading}>{taskLookupLoading ? '查询中...' : '查询任务'}</button></div>
-              {taskLookupResult ? <div className="detail-stack"><div className="detail-row"><span>文件名</span><strong>{taskLookupResult.fileName}</strong></div><div className="detail-row"><span>资源类型</span><strong>{taskLookupResult.resourceType}</strong></div><div className="detail-row"><span>状态</span><StatusChip label={taskLookupResult.taskStatus} tone={statusTone(taskLookupResult.taskStatus)} /></div><div className="detail-row"><span>上传时间</span><strong>{formatDateTime(taskLookupResult.uploadTime)}</strong></div></div> : null}
+          <div className="grid gap-4">
+            <Panel title="手动查询" subtitle="支持 resume / knowledge 两种资源类型">
+              <div className="flex items-end gap-3">
+                <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">资源类型</span><select className="h-8 rounded-lg border border-border bg-card px-3 text-sm outline-none focus:border-primary focus:ring-3 focus:ring-ring/50" value={taskLookupType} onChange={(event) => setTaskLookupType(event.target.value as ResourceType)}><option value="resume">resume</option><option value="knowledge">knowledge</option></select></div>
+                <div className="flex flex-col gap-1.5 flex-1"><span className="text-[13px] font-medium text-muted-foreground">资源 ID</span><Input value={taskLookupId} onChange={(event) => setTaskLookupId(event.target.value)} placeholder="例如 3" /></div>
+                <Button onClick={() => void handleTaskLookup()} disabled={taskLookupLoading}>{taskLookupLoading ? '查询中...' : '查询任务'}</Button>
+              </div>
+              {taskLookupResult ? (
+                <div className="flex flex-col gap-2 mt-3">
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">文件名</span><strong className="text-sm">{taskLookupResult.fileName}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">资源类型</span><strong className="text-sm">{taskLookupResult.resourceType}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">状态</span><StatusChip label={taskLookupResult.taskStatus} tone={statusTone(taskLookupResult.taskStatus)} /></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">上传时间</span><strong className="text-sm">{formatDateTime(taskLookupResult.uploadTime)}</strong></div>
+                </div>
+              ) : null}
             </Panel>
 
             <Panel title="最近任务" subtitle="上传后自动纳入最近历史">
-              {recentTasks.length === 0 ? <EmptyState title="暂无任务历史" text="简历或知识库上传之后，这里会自动出现。" /> : <div className="list-stack">{recentTasks.map((item) => <div key={`${item.resourceType}-${item.resourceId}`} className="task-row"><div><strong>{item.fileName}</strong><span>{item.resourceType} / #{item.resourceId} / {formatDateTime(item.updatedAt)}</span></div><div className="button-row compact-row"><StatusChip label={item.taskStatus} tone={statusTone(item.taskStatus)} /><button type="button" className="ghost-button small-button" onClick={() => { setTaskLookupType(item.resourceType); setTaskLookupId(item.resourceId.toString()); void runTaskLookup(item.resourceType, item.resourceId); }}>刷新</button><button type="button" className="ghost-button small-button" onClick={() => { if (item.resourceType === 'resume') { setActiveView('resume'); void loadResumeWorkspace(item.resourceId); } else { setActiveView('knowledge'); void loadKnowledgeDetail(item.resourceId); } }}>打开</button></div></div>)}</div>}
+              {recentTasks.length === 0 ? <EmptyState title="暂无任务历史" text="简历或知识库上传之后，这里会自动出现。" /> : (
+                <div className="flex flex-col gap-2">{recentTasks.map((item) => (
+                  <div key={`${item.resourceType}-${item.resourceId}`} className="flex items-center justify-between gap-3 px-3.5 py-3 border border-border bg-card rounded-lg">
+                    <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.resourceType} / #{item.resourceId} / {formatDateTime(item.updatedAt)}</span></div>
+                    <div className="flex items-center gap-2">
+                      <StatusChip label={item.taskStatus} tone={statusTone(item.taskStatus)} />
+                      <Button variant="outline" size="sm" onClick={() => { setTaskLookupType(item.resourceType); setTaskLookupId(item.resourceId.toString()); void runTaskLookup(item.resourceType, item.resourceId); }}>刷新</Button>
+                      <Button variant="outline" size="sm" onClick={() => { if (item.resourceType === 'resume') { setActiveView('resume'); void loadResumeWorkspace(item.resourceId); } else { setActiveView('knowledge'); void loadKnowledgeDetail(item.resourceId); } }}>打开</Button>
+                    </div>
+                  </div>
+                ))}</div>
+              )}
             </Panel>
 
             <Panel title="说明" subtitle="和后端接口契约保持一致">
-              <ol className="steps-list"><li>任务中心只负责查询 resume 和 knowledge 两类资源状态。</li><li>简历列表接口目前不存在，所以前端对简历历史采用浏览器本地缓存。</li><li>知识库列表接口只返回元数据，不返回文档正文，因此详情页也只展示元信息。</li><li>RAG 聊天接口是 POST SSE，因此前端没有使用 EventSource，而是用 fetch 直接消费流。</li></ol>
+              <ol className="m-0 pl-5 flex flex-col gap-2 text-sm text-muted-foreground leading-relaxed">
+                <li>任务中心只负责查询 resume 和 knowledge 两类资源状态。</li>
+                <li>简历列表接口目前不存在，所以前端对简历历史采用浏览器本地缓存。</li>
+                <li>知识库列表接口只返回元数据，不返回文档正文，因此详情页也只展示元信息。</li>
+                <li>RAG 聊天接口是 POST SSE，因此前端没有使用 EventSource，而是用 fetch 直接消费流。</li>
+              </ol>
             </Panel>
-          </section>
+          </div>
         ) : null}
       </main>
     </div>
   );
 }
-
-
