@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useState } from 'react';
 import {
   createRagSession,
   deleteKnowledge,
@@ -52,6 +52,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { SessionChatModal } from './components/rag/session-chat-modal';
 
 type View = 'overview' | 'resume' | 'knowledge' | 'rag' | 'tasks';
 type NoticeTone = 'neutral' | 'success' | 'danger';
@@ -145,6 +146,7 @@ export default function App() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [selectedSessionDetail, setSelectedSessionDetail] = useState<RagSessionDetailResponse | null>(null);
   const [sessionDetailLoading, setSessionDetailLoading] = useState(false);
+  const [sessionChatOpen, setSessionChatOpen] = useState(false);
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [sessionTitleDraft, setSessionTitleDraft] = useState('');
   const [sessionKnowledgeDraft, setSessionKnowledgeDraft] = useState<number[]>([]);
@@ -155,8 +157,6 @@ export default function App() {
   const [taskLookupId, setTaskLookupId] = useState('');
   const [taskLookupLoading, setTaskLookupLoading] = useState(false);
   const [taskLookupResult, setTaskLookupResult] = useState<TaskStatusResponse | null>(null);
-
-  const messageEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     window.localStorage.setItem(RECENT_RESUMES_KEY, JSON.stringify(recentResumes));
@@ -179,10 +179,6 @@ export default function App() {
     void refreshKnowledgeList();
     void refreshSessions();
   }, []);
-
-  useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [selectedSessionDetail]);
 
   function pushNotice(message: string, tone: NoticeTone = 'neutral'): void {
     setNotice({ message, tone });
@@ -316,6 +312,13 @@ export default function App() {
     } finally {
       setSessionDetailLoading(false);
     }
+  }
+
+  async function openSessionChat(sessionId: number): Promise<void> {
+    setSelectedSessionDetail(null);
+    setSessionQuestion('');
+    setSessionChatOpen(true);
+    await loadSessionDetail(sessionId);
   }
 
   async function handleResumeUpload(): Promise<void> {
@@ -539,8 +542,9 @@ export default function App() {
       setActiveView('rag');
       setSessionTab('ACTIVE');
       setNewSessionTitle('');
-      await refreshSessions();
+      setSessionChatOpen(true);
       await loadSessionDetail(session.id);
+      await refreshSessions();
       pushNotice('RAG 会话已创建', 'success');
     } catch (error) {
       pushNotice((error as Error).message, 'danger');
@@ -602,6 +606,7 @@ export default function App() {
       await deleteRagSession(selectedSessionDetail.id);
       setSelectedSessionId(null);
       setSelectedSessionDetail(null);
+      setSessionChatOpen(false);
       await refreshSessions();
       pushNotice('会话已删除', 'success');
     } catch (error) {
@@ -1021,43 +1026,36 @@ export default function App() {
               </Tabs>
               <div className="flex flex-col gap-1.5 mb-3"><span className="text-[13px] font-medium text-muted-foreground">搜索会话</span><Input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="按标题或会话 ID 搜索" /></div>
               <div className="flex flex-col gap-2">{visibleSessions.length === 0 ? <EmptyState title="没有会话" text="新建一条会话后会在这里出现。" /> : visibleSessions.map((item) => (
-                <button key={item.id} type="button" className={`flex items-center justify-between gap-3 px-3.5 py-3 border bg-card rounded-lg w-full text-left transition-colors hover:border-primary hover:bg-indigo-soft cursor-pointer ${selectedSessionId === item.id ? 'border-primary bg-indigo-soft' : 'border-border'}`} onClick={() => void loadSessionDetail(item.id)}>
+                <button key={item.id} type="button" className={`flex items-center justify-between gap-3 px-3.5 py-3 border bg-card rounded-lg w-full text-left transition-colors hover:border-primary hover:bg-indigo-soft cursor-pointer ${selectedSessionId === item.id ? 'border-primary bg-indigo-soft' : 'border-border'}`} onClick={() => void openSessionChat(item.id)}>
                   <div className="flex flex-col"><strong className="text-sm">{item.title}</strong><span className="text-xs text-muted-foreground">#{item.id} · {item.knowledgeBaseIds.length} 个知识源</span></div>
                   <StatusChip label={item.status} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} />
                 </button>
               ))}</div>
             </Panel>
 
-            <Panel title="会话工作台" subtitle="标题、知识源和对话都在这里管理">
+            <Panel title="会话工作台" subtitle="标题和知识源都在这里管理，聊天已移到独立弹窗">
               {selectedSessionDetail ? (
-                <div className="flex items-stretch gap-4 max-lg:flex-col">
-                  <div className="flex-1 flex flex-col gap-3">
-                    <div className="flex items-end gap-3"><div className="flex flex-col gap-1.5 flex-1"><span className="text-[13px] font-medium text-muted-foreground">标题</span><Input value={sessionTitleDraft} onChange={(event) => setSessionTitleDraft(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} /></div><Button variant="secondary" onClick={() => void handleSessionTitleUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</Button></div>
-                    <div className="flex items-center gap-3"><Button variant="secondary" onClick={() => void handleSessionStatusToggle()}>{selectedSessionDetail.status === 'ACTIVE' ? '归档会话' : '恢复会话'}</Button><Button variant="destructive" onClick={() => void handleSessionDelete()}>删除会话</Button></div>
-                    <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">创建时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.createdAt)}</strong></div>
-                    <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">更新时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.updatedAt)}</strong></div>
-                    <div className="flex flex-col gap-2 max-h-[220px] overflow-auto thin-scrollbar">{knowledgeList.map((item) => (
-                      <label key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/50 border border-border cursor-pointer">
-                        <Checkbox checked={sessionKnowledgeDraft.includes(item.id)} disabled={selectedSessionDetail.status !== 'ACTIVE'} onCheckedChange={() => setSessionKnowledgeDraft((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} />
-                        <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.category}</span></div>
-                      </label>
-                    ))}</div>
-                    <Button variant="secondary" onClick={() => void handleSessionKnowledgeUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>更新知识源</Button>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-end gap-3 max-lg:flex-col max-lg:items-stretch">
+                    <div className="flex flex-col gap-1.5 flex-1"><span className="text-[13px] font-medium text-muted-foreground">标题</span><Input value={sessionTitleDraft} onChange={(event) => setSessionTitleDraft(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} /></div>
+                    <Button variant="secondary" onClick={() => void handleSessionTitleUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</Button>
                   </div>
-
-                  <div className="flex-1 flex flex-col gap-3">
-                    <div className="min-h-[360px] max-h-[520px] overflow-auto flex flex-col gap-2.5 p-3.5 bg-muted/50 border border-border rounded-lg thin-scrollbar">
-                      {sessionDetailLoading ? <p className="text-[13px] text-muted-foreground">正在加载会话...</p> : null}
-                      {selectedSessionDetail.messages.map((message) => (
-                        <article key={`${message.id}-${message.type}`} className={`flex flex-col border rounded-lg px-4 py-3 gap-1.5 ${message.type === 'USER' ? 'bg-indigo-soft border-indigo/[0.12] ml-10' : 'bg-card border-border mr-10'}`}>
-                          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{message.type === 'USER' ? '你' : 'Assistant'}</span>
-                          <p className="text-sm text-foreground">{message.content || '...'}</p>
-                        </article>
-                      ))}
-                      <div ref={messageEndRef} />
-                    </div>
-                    <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">提问</span><Textarea value={sessionQuestion} onChange={(event) => setSessionQuestion(event.target.value)} rows={4} disabled={selectedSessionDetail.status !== 'ACTIVE' || chatStreaming} placeholder={selectedSessionDetail.status === 'ACTIVE' ? '例如：根据这些资料帮我生成一轮前端面试问答' : '归档会话不可继续提问'} /></div>
-                    <Button onClick={() => void handleSendQuestion()} disabled={selectedSessionDetail.status !== 'ACTIVE' || chatStreaming}>{chatStreaming ? '流式生成中...' : '发送问题'}</Button>
+                  <div className="flex items-center gap-3">
+                    <Button variant="secondary" onClick={() => void handleSessionStatusToggle()}>{selectedSessionDetail.status === 'ACTIVE' ? '归档会话' : '恢复会话'}</Button>
+                    <Button variant="destructive" onClick={() => void handleSessionDelete()}>删除会话</Button>
+                  </div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">创建时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.createdAt)}</strong></div>
+                  <div className="flex justify-between items-center gap-3 pb-2.5 border-b border-border/50"><span className="text-xs text-muted-foreground">更新时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.updatedAt)}</strong></div>
+                  <div className="flex flex-col gap-2 max-h-[220px] overflow-auto thin-scrollbar">{knowledgeList.map((item) => (
+                    <label key={item.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-muted/50 border border-border cursor-pointer">
+                      <Checkbox checked={sessionKnowledgeDraft.includes(item.id)} disabled={selectedSessionDetail.status !== 'ACTIVE'} onCheckedChange={() => setSessionKnowledgeDraft((current) => current.includes(item.id) ? current.filter((value) => value !== item.id) : [...current, item.id])} />
+                      <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.category}</span></div>
+                    </label>
+                  ))}</div>
+                  <Button variant="secondary" onClick={() => void handleSessionKnowledgeUpdate()} disabled={selectedSessionDetail.status !== 'ACTIVE'}>更新知识源</Button>
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-3 max-lg:flex-col max-lg:items-start">
+                    <div className="text-sm text-muted-foreground">聊天已移到独立弹窗。点击任一会话行即可打开，或直接继续当前会话。</div>
+                    <Button variant="outline" onClick={() => setSessionChatOpen(true)}>打开聊天</Button>
                   </div>
                 </div>
               ) : <EmptyState title="未选择会话" text="从左侧挑一个会话，或先创建一个新的会话。" />}
@@ -1110,6 +1108,16 @@ export default function App() {
           </div>
         ) : null}
       </main>
+      <SessionChatModal
+        open={sessionChatOpen}
+        loading={sessionDetailLoading}
+        sessionDetail={selectedSessionDetail}
+        question={sessionQuestion}
+        streaming={chatStreaming}
+        onOpenChange={setSessionChatOpen}
+        onQuestionChange={setSessionQuestion}
+        onSend={() => void handleSendQuestion()}
+      />
     </div>
   );
 }
