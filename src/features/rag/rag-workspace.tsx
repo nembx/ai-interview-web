@@ -2,7 +2,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { EmptyState, Panel, StatusChip } from '@/shared/ui/app-primitives';
+import { cn } from '@/lib/utils';
+import { StatusChip } from '@/shared/ui/app-primitives';
 import type { KnowledgeListItem, RagSessionDetailResponse, RagSessionResponse, SessionStatus } from '@/types';
 import { formatDateTime } from '@/utils';
 
@@ -64,61 +65,127 @@ export function RagWorkspace(props: RagWorkspaceProps) {
   } = props;
 
   return (
-    <div className="grid gap-4">
-      <Panel title="新建会话" subtitle="会话会绑定选中的知识库">
-        <div className="flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">会话标题</span><Input value={newSessionTitle} onChange={(event) => onNewSessionTitleChange(event.target.value)} placeholder="可留空，后端会自动生成标题" /></div>
-        <div className="mt-3 flex flex-col gap-2">{knowledgeList.length === 0 ? <EmptyState title="还没有知识库" text="先去知识库页面上传文档，再回来创建会话。" /> : knowledgeList.map((item) => (
-          <label key={item.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
-            <Checkbox checked={composerKnowledgeIds.includes(item.id)} onCheckedChange={() => onComposerKnowledgeToggle(item.id)} />
-            <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.category}</span></div>
-          </label>
-        ))}</div>
-        <Button className="mt-3" onClick={onCreateSession}>创建会话</Button>
-      </Panel>
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold tracking-tight">RAG 会话</h2>
+        <Button variant="outline" size="sm" onClick={onRefreshSessions} disabled={sessionsLoading}>
+          {sessionsLoading ? '刷新中...' : '刷新会话'}
+        </Button>
+      </div>
 
-      <Panel title="会话列表" subtitle="支持 ACTIVE / ARCHIVED 两个状态" actions={<Button variant="outline" onClick={onRefreshSessions} disabled={sessionsLoading}>{sessionsLoading ? '刷新中...' : '刷新会话'}</Button>}>
-        <Tabs value={sessionTab} onValueChange={(value) => onSessionTabChange(value as SessionStatus)} className="mb-3">
-          <TabsList className="w-full">
-            <TabsTrigger value="ACTIVE" className="flex-1">活跃会话</TabsTrigger>
-            <TabsTrigger value="ARCHIVED" className="flex-1">已归档</TabsTrigger>
-          </TabsList>
-        </Tabs>
-        <div className="mb-3 flex flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">搜索会话</span><Input value={sessionSearch} onChange={(event) => onSessionSearchChange(event.target.value)} placeholder="按标题或会话 ID 搜索" /></div>
-        <div className="flex flex-col gap-2">{visibleSessions.length === 0 ? <EmptyState title="没有会话" text="新建一条会话后会在这里出现。" /> : visibleSessions.map((item) => (
-          <button key={item.id} type="button" className={`flex w-full cursor-pointer items-center justify-between gap-3 rounded-lg border bg-card px-3.5 py-3 text-left transition-colors hover:border-primary hover:bg-indigo-soft ${selectedSessionId === item.id ? 'border-primary bg-indigo-soft' : 'border-border'}`} onClick={() => onOpenSessionChat(item.id)}>
-            <div className="flex flex-col"><strong className="text-sm">{item.title}</strong><span className="text-xs text-muted-foreground">#{item.id} · {item.knowledgeBaseIds.length} 个知识源</span></div>
-            <StatusChip label={item.status} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} />
-          </button>
-        ))}</div>
-      </Panel>
-
-      <Panel title="会话工作台" subtitle="标题和知识源都在这里管理，聊天已移到独立弹窗">
-        {selectedSessionDetail ? (
-          <div className="flex flex-col gap-3">
-            <div className="flex items-end gap-3 max-lg:flex-col max-lg:items-stretch">
-              <div className="flex flex-1 flex-col gap-1.5"><span className="text-[13px] font-medium text-muted-foreground">标题</span><Input value={sessionTitleDraft} onChange={(event) => onSessionTitleDraftChange(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} /></div>
-              <Button variant="secondary" onClick={onSessionTitleUpdate} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</Button>
-            </div>
-            <div className="flex items-center gap-3">
-              <Button variant="secondary" onClick={onSessionStatusToggle}>{selectedSessionDetail.status === 'ACTIVE' ? '归档会话' : '恢复会话'}</Button>
-              <Button variant="destructive" onClick={onSessionDelete}>删除会话</Button>
-            </div>
-            <div className="flex items-center justify-between gap-3 border-b border-border/50 pb-2.5"><span className="text-xs text-muted-foreground">创建时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.createdAt)}</strong></div>
-            <div className="flex items-center justify-between gap-3 border-b border-border/50 pb-2.5"><span className="text-xs text-muted-foreground">更新时间</span><strong className="text-sm">{formatDateTime(selectedSessionDetail.updatedAt)}</strong></div>
-            <div className="thin-scrollbar flex max-h-[220px] flex-col gap-2 overflow-auto">{knowledgeList.map((item) => (
-              <label key={item.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-border bg-muted/50 px-3 py-2.5">
-                <Checkbox checked={sessionKnowledgeDraft.includes(item.id)} disabled={selectedSessionDetail.status !== 'ACTIVE'} onCheckedChange={() => onSessionKnowledgeDraftToggle(item.id)} />
-                <div className="flex flex-col"><strong className="text-sm">{item.fileName}</strong><span className="text-xs text-muted-foreground">{item.category}</span></div>
-              </label>
-            ))}</div>
-            <Button variant="secondary" onClick={onSessionKnowledgeUpdate} disabled={selectedSessionDetail.status !== 'ACTIVE'}>更新知识源</Button>
-            <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border/70 bg-muted/30 px-4 py-3 max-lg:flex-col max-lg:items-start">
-              <div className="text-sm text-muted-foreground">聊天已移到独立弹窗。点击任一会话行即可打开，或直接继续当前会话。</div>
-              <Button variant="outline" onClick={onOpenCurrentChat}>打开聊天</Button>
-            </div>
+      <div className="grid gap-6 lg:grid-cols-[300px_1fr]">
+        {/* Left: session list */}
+        <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+          {/* New session */}
+          <div className="space-y-2 rounded-lg border border-border bg-card p-3">
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">新建会话</h3>
+            <Input value={newSessionTitle} onChange={(event) => onNewSessionTitleChange(event.target.value)} placeholder="标题（可留空）" className="h-8" />
+            {knowledgeList.length === 0 ? (
+              <p className="py-2 text-xs text-muted-foreground">先去知识库上传文档</p>
+            ) : (
+              <div className="thin-scrollbar max-h-[140px] space-y-0.5 overflow-auto">
+                {knowledgeList.map((item) => (
+                  <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                    <Checkbox checked={composerKnowledgeIds.includes(item.id)} onCheckedChange={() => onComposerKnowledgeToggle(item.id)} />
+                    <span className="truncate">{item.fileName}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <Button size="sm" className="w-full" onClick={onCreateSession}>创建会话</Button>
           </div>
-        ) : <EmptyState title="未选择会话" text="从左侧挑一个会话，或先创建一个新的会话。" />}
-      </Panel>
+
+          {/* Session list */}
+          <Tabs value={sessionTab} onValueChange={(value) => onSessionTabChange(value as SessionStatus)}>
+            <TabsList className="w-full">
+              <TabsTrigger value="ACTIVE" className="flex-1">活跃</TabsTrigger>
+              <TabsTrigger value="ARCHIVED" className="flex-1">归档</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Input value={sessionSearch} onChange={(event) => onSessionSearchChange(event.target.value)} placeholder="搜索会话..." className="h-8" />
+
+          <div className="thin-scrollbar max-h-[400px] space-y-1 overflow-auto">
+            {visibleSessions.length === 0 ? (
+              <p className="py-6 text-center text-xs text-muted-foreground">暂无会话</p>
+            ) : (
+              visibleSessions.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn(
+                    'flex w-full cursor-pointer items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm transition-colors',
+                    selectedSessionId === item.id ? 'bg-muted font-medium' : 'hover:bg-muted/50',
+                  )}
+                  onClick={() => onOpenSessionChat(item.id)}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate">{item.title}</div>
+                    <div className="text-[11px] text-muted-foreground">#{item.id} · {item.knowledgeBaseIds.length} 个知识源</div>
+                  </div>
+                  <StatusChip label={item.status} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} />
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
+
+        {/* Right: workbench */}
+        <div className="min-w-0">
+          {selectedSessionDetail ? (
+            <div className="space-y-5 rounded-lg border border-border bg-card p-5">
+              {/* Title */}
+              <div className="flex items-center gap-3">
+                <Input value={sessionTitleDraft} onChange={(event) => onSessionTitleDraftChange(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} className="flex-1" />
+                <Button size="sm" variant="secondary" onClick={onSessionTitleUpdate} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</Button>
+              </div>
+
+              {/* Info + actions */}
+              <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+                <div className="flex items-center gap-3 text-muted-foreground">
+                  <span>创建: {formatDateTime(selectedSessionDetail.createdAt)}</span>
+                  <span>更新: {formatDateTime(selectedSessionDetail.updatedAt)}</span>
+                  <StatusChip label={selectedSessionDetail.status} tone={selectedSessionDetail.status === 'ACTIVE' ? 'success' : 'neutral'} />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={onSessionStatusToggle}>
+                    {selectedSessionDetail.status === 'ACTIVE' ? '归档' : '恢复'}
+                  </Button>
+                  <Button size="sm" variant="destructive" onClick={onSessionDelete}>删除</Button>
+                </div>
+              </div>
+
+              {/* Knowledge sources */}
+              <div>
+                <h4 className="mb-2 text-sm font-medium">知识源</h4>
+                <div className="thin-scrollbar max-h-[200px] space-y-0.5 overflow-auto">
+                  {knowledgeList.map((item) => (
+                    <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                      <Checkbox
+                        checked={sessionKnowledgeDraft.includes(item.id)}
+                        disabled={selectedSessionDetail.status !== 'ACTIVE'}
+                        onCheckedChange={() => onSessionKnowledgeDraftToggle(item.id)}
+                      />
+                      <span className="flex-1 truncate">{item.fileName}</span>
+                      <span className="text-xs text-muted-foreground">{item.category}</span>
+                    </label>
+                  ))}
+                </div>
+                <Button size="sm" variant="secondary" className="mt-2" onClick={onSessionKnowledgeUpdate} disabled={selectedSessionDetail.status !== 'ACTIVE'}>
+                  更新知识源
+                </Button>
+              </div>
+
+              {/* Open chat */}
+              <Button className="w-full" onClick={onOpenCurrentChat}>打开聊天</Button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center rounded-lg border border-dashed border-border p-12">
+              <p className="text-sm text-muted-foreground">选择或创建一个会话开始</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react"
+import ReactMarkdown from "react-markdown"
 
 import type { RagSessionDetailResponse } from "@/types"
 
@@ -32,6 +33,28 @@ function getSessionStatusLabel(status?: RagSessionDetailResponse["status"]) {
   }
 
   return "未加载"
+}
+
+function SessionMessageContent({
+  content,
+  type,
+}: {
+  content: string
+  type: "USER" | "ASSISTANT"
+}) {
+  if (type === "USER") {
+    return (
+      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+        {content || "..."}
+      </p>
+    )
+  }
+
+  return (
+    <div className="session-chat-markdown break-words text-sm leading-6 text-foreground">
+      <ReactMarkdown>{content || "..."}</ReactMarkdown>
+    </div>
+  )
 }
 
 function SessionChatModal({
@@ -190,9 +213,7 @@ function SessionChatModal({
                       <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
                         {message.type === "USER" ? "你" : "Assistant"}
                       </span>
-                      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
-                        {message.content || "..."}
-                      </p>
+                      <SessionMessageContent content={message.content} type={message.type} />
                     </article>
                   ))
                 ) : (

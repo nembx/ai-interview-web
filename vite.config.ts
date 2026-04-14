@@ -9,6 +9,23 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [tailwindcss(), react()],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('/node_modules/echarts/')) {
+              return 'echarts-vendor';
+            }
+
+            if (id.includes('/node_modules/zrender/')) {
+              return 'zrender-vendor';
+            }
+
+            return undefined;
+          },
+        },
+      },
+    },
     test: {
       environment: 'jsdom',
       setupFiles: './src/test/setup.ts',

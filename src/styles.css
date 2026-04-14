@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
@@ -6,7 +5,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-sans: 'Geist Variable', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -46,11 +45,11 @@
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
 
-  --color-indigo: #6366f1;
-  --color-indigo-hover: #4f46e5;
-  --color-indigo-text: #4338ca;
-  --color-indigo-soft: rgba(99, 102, 241, 0.08);
-  --color-indigo-medium: rgba(99, 102, 241, 0.15);
+  --color-indigo: #0f766e;
+  --color-indigo-hover: #115e59;
+  --color-indigo-text: #115e59;
+  --color-indigo-soft: rgba(15, 118, 110, 0.1);
+  --color-indigo-medium: rgba(15, 118, 110, 0.18);
 
   --color-success: #10b981;
   --color-success-soft: rgba(16, 185, 129, 0.1);
@@ -59,54 +58,57 @@
   --color-danger: #ef4444;
   --color-danger-soft: rgba(239, 68, 68, 0.1);
 
-  --color-sidebar-dark: #0f172a;
-  --color-sidebar-surface: rgba(255, 255, 255, 0.06);
-  --color-sidebar-text-light: #e2e8f0;
-  --color-sidebar-muted-light: #64748b;
-  --color-sidebar-border-light: rgba(255, 255, 255, 0.08);
+  --color-sidebar-dark: #10212d;
+  --color-sidebar-surface: rgba(255, 255, 255, 0.08);
+  --color-sidebar-text-light: #f3f7fb;
+  --color-sidebar-muted-light: #95a7b6;
+  --color-sidebar-border-light: rgba(255, 255, 255, 0.1);
 }
 
 :root {
-  --background: oklch(0.97 0.001 286.375);
-  --foreground: oklch(0.145 0.005 286.375);
+  --background: oklch(0.985 0.002 250);
+  --foreground: oklch(0.205 0.018 236.1);
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0.005 286.375);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0.005 286.375);
-  --primary: oklch(0.488 0.243 264.376);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0.001 286.375);
-  --secondary-foreground: oklch(0.205 0.005 286.375);
-  --muted: oklch(0.97 0.001 286.375);
-  --muted-foreground: oklch(0.556 0.005 286.375);
-  --accent: oklch(0.97 0.001 286.375);
-  --accent-foreground: oklch(0.205 0.005 286.375);
+  --card-foreground: oklch(0.205 0.018 236.1);
+  --popover: oklch(0.995 0.003 219.8);
+  --popover-foreground: oklch(0.205 0.018 236.1);
+  --primary: oklch(0.56 0.12 190.5);
+  --primary-foreground: oklch(0.985 0.001 196.5);
+  --secondary: oklch(0.958 0.014 220.4);
+  --secondary-foreground: oklch(0.285 0.02 236.5);
+  --muted: oklch(0.955 0.008 250);
+  --muted-foreground: oklch(0.52 0.02 250);
+  --accent: oklch(0.955 0.024 177.5);
+  --accent-foreground: oklch(0.285 0.02 236.5);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0.004 286.375);
-  --input: oklch(0.922 0.004 286.375);
-  --ring: oklch(0.488 0.243 264.376);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.556 0.16 162);
-  --chart-3: oklch(0.637 0.237 25);
-  --chart-4: oklch(0.7 0.15 60);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --radius: 0.5rem;
+  --border: oklch(0.91 0.006 250);
+  --input: oklch(0.91 0.006 250);
+  --ring: oklch(0.56 0.12 190.5);
+  --chart-1: oklch(0.56 0.12 190.5);
+  --chart-2: oklch(0.65 0.125 155.8);
+  --chart-3: oklch(0.73 0.17 75.3);
+  --chart-4: oklch(0.67 0.12 245.3);
+  --chart-5: oklch(0.69 0.18 28.9);
+  --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0.005 286.375);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.56 0.12 190.5);
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: oklch(0.97 0.001 286.375);
   --sidebar-accent-foreground: oklch(0.205 0.005 286.375);
-  --sidebar-border: oklch(0.922 0.004 286.375);
-  --sidebar-ring: oklch(0.488 0.243 264.376);
+  --sidebar-border: oklch(0.91 0.006 250);
+  --sidebar-ring: oklch(0.56 0.12 190.5);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+  html {
+    @apply bg-background;
+  }
   body {
-    @apply bg-background text-foreground font-sans text-sm antialiased;
+    @apply min-h-screen bg-background text-foreground font-sans text-sm antialiased;
   }
   h1, h2, h3, h4, strong {
     font-weight: 600;
@@ -122,20 +124,87 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  #root {
+    @apply min-h-screen;
+  }
 }
 
 /* ─── Score Dial (complex radial, kept as component class) ── */
 @layer components {
   .score-dial {
-    @apply w-[120px] aspect-square rounded-full grid place-items-center text-center flex-shrink-0;
+    @apply w-[100px] aspect-square rounded-full grid place-items-center text-center flex-shrink-0;
     background: var(--color-indigo-soft);
-    border: 3px solid var(--color-indigo-medium);
-    box-shadow: 0 0 0 8px rgba(99, 102, 241, 0.05);
+    border: 2px solid var(--color-indigo-medium);
+  }
+
+  .session-chat-markdown {
+    @apply text-foreground;
+  }
+
+  .session-chat-markdown > :first-child {
+    margin-top: 0;
+  }
+
+  .session-chat-markdown > :last-child {
+    margin-bottom: 0;
+  }
+
+  .session-chat-markdown :where(h1, h2, h3, h4) {
+    @apply mt-4 mb-2 font-semibold tracking-tight text-foreground;
+  }
+
+  .session-chat-markdown h1 {
+    @apply text-base;
+  }
+
+  .session-chat-markdown h2 {
+    @apply text-[15px];
+  }
+
+  .session-chat-markdown h3,
+  .session-chat-markdown h4 {
+    @apply text-sm;
+  }
+
+  .session-chat-markdown p {
+    @apply text-sm leading-6 text-foreground;
+    margin: 0.4rem 0;
+  }
+
+  .session-chat-markdown ul,
+  .session-chat-markdown ol {
+    margin: 0.5rem 0;
+    padding-left: 1.25rem;
+  }
+
+  .session-chat-markdown li {
+    @apply text-sm leading-6 text-foreground;
+    margin: 0.15rem 0;
+  }
+
+  .session-chat-markdown blockquote {
+    @apply my-3 border-l-2 border-border pl-3 text-muted-foreground;
+  }
+
+  .session-chat-markdown a {
+    color: var(--color-indigo-text);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .session-chat-markdown code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[13px];
+  }
+
+  .session-chat-markdown pre {
+    @apply my-3 overflow-x-auto rounded-xl border border-border/70 bg-card px-3 py-2.5;
+  }
+
+  .session-chat-markdown pre code {
+    @apply bg-transparent p-0 text-[13px] leading-6;
   }
 }
 
 /* ─── Thin scrollbars ─── */
 .thin-scrollbar::-webkit-scrollbar { width: 4px; }
 .thin-scrollbar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
-.sidebar-scroll::-webkit-scrollbar { width: 4px; }
-.sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 2px; }

@@ -17,10 +17,10 @@ export function Panel({
 }) {
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
-        <div>
-          <CardTitle className="text-[15px] font-semibold tracking-tight">{title}</CardTitle>
-          <CardDescription className="text-[13px]">{subtitle}</CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0 pb-4 max-sm:flex-col">
+        <div className="space-y-0.5">
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{subtitle}</CardDescription>
         </div>
         {actions}
       </CardHeader>
@@ -41,9 +41,12 @@ export function MetricTile({
   compact?: boolean;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/50 px-3.5 py-3">
-      <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</span>
-      <strong className={cn('mt-1 mb-0.5 block font-bold tracking-tight text-foreground', compact ? 'text-lg' : 'text-2xl')}>
+    <div className={cn(
+      'rounded-lg border border-border bg-muted/30 px-4 py-3',
+      compact && 'px-3 py-2.5',
+    )}>
+      <span className="block text-[11px] font-medium uppercase tracking-wider text-muted-foreground">{label}</span>
+      <strong className={cn('mt-1 block font-semibold tracking-tight text-foreground', compact ? 'text-xl' : 'text-2xl')}>
         {value}
       </strong>
       <small className="block text-[11px] text-muted-foreground">{footnote}</small>
@@ -52,10 +55,10 @@ export function MetricTile({
 }
 
 const toneClasses = {
-  neutral: 'bg-muted text-muted-foreground border-transparent',
-  warn: 'bg-warn-soft text-amber-700 border-transparent',
-  success: 'bg-success-soft text-emerald-600 border-transparent',
-  danger: 'bg-danger-soft text-red-600 border-transparent',
+  neutral: 'bg-muted text-muted-foreground border-border',
+  warn: 'bg-amber-50 text-amber-700 border-amber-200',
+  success: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  danger: 'bg-red-50 text-red-600 border-red-200',
 } as const;
 
 export function StatusChip({
@@ -74,8 +77,8 @@ export function StatusChip({
 
 export function EmptyState({ title, text }: { title: string; text: string }) {
   return (
-    <div className="rounded-lg border border-border bg-muted/50 p-4">
-      <strong className="mb-1 block text-sm">{title}</strong>
+    <div className="rounded-lg border border-dashed border-border bg-muted/20 p-5">
+      <strong className="mb-1.5 block text-sm">{title}</strong>
       <p className="text-[13px] text-muted-foreground">{text}</p>
     </div>
   );
@@ -83,7 +86,7 @@ export function EmptyState({ title, text }: { title: string; text: string }) {
 
 export function FeatureCard({ title, text }: { title: string; text: string }) {
   return (
-    <article className="rounded-lg border border-border bg-muted/50 p-4">
+    <article className="rounded-lg border border-border bg-card p-4">
       <strong className="mb-1 block text-sm">{title}</strong>
       <p className="text-[13px] text-muted-foreground">{text}</p>
     </article>

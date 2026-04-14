@@ -760,6 +760,9 @@ export default function App() {
             <OverviewWorkspace
               recentResumes={recentResumes}
               recentTasks={recentTasks}
+              knowledgeList={knowledgeList}
+              activeSessionCount={activeSessions.length}
+              archivedSessionCount={archivedSessions.length}
               onOpenResume={openResumeFromOverview}
             />
           ),

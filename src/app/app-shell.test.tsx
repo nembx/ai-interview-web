@@ -39,7 +39,6 @@ test('renders the active workspace content and switches views from navigation', 
     />,
   );
 
-  expect(screen.getByRole('heading', { name: '总览' })).toBeInTheDocument();
   expect(screen.getByText(viewContent.overview)).toBeInTheDocument();
   expect(screen.queryByText(viewContent.resume)).not.toBeInTheDocument();
 
@@ -67,4 +66,27 @@ test('shows the notice banner and in-flight task badge when provided', () => {
   expect(screen.getByText('任务处理中')).toBeInTheDocument();
   expect(screen.getByText(viewContent.tasks)).toBeInTheDocument();
   expect(screen.getAllByText('1').length).toBeGreaterThan(0);
+});
+
+test('renders active view content and navigation items for all views', () => {
+  render(
+    <AppShell
+      activeView="resume"
+      notice={null}
+      onViewChange={() => {}}
+      views={{
+        overview: <div>{viewContent.overview}</div>,
+        resume: <div>{viewContent.resume}</div>,
+        knowledge: <div>{viewContent.knowledge}</div>,
+        rag: <div>{viewContent.rag}</div>,
+        tasks: <div>{viewContent.tasks}</div>,
+      }}
+      counts={baseCounts}
+    />,
+  );
+
+  expect(screen.getByText(viewContent.resume)).toBeInTheDocument();
+  expect(screen.queryByText(viewContent.overview)).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /简历分析/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /RAG 会话/i })).toBeInTheDocument();
 });

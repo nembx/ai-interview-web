@@ -336,3 +336,34 @@ test('resets the initial bottom snap when opening a different session', async ()
     expect(viewport.scrollTop).toBe(1400);
   });
 });
+
+test('renders assistant messages as formatted markdown', () => {
+  const markdownSession: RagSessionDetailResponse = {
+    ...activeSession,
+    messages: [
+      {
+        id: 21,
+        type: 'ASSISTANT',
+        content: '# 面试重点\n\n- JVM\n- 并发\n\n```ts\nconst answer = 1;\n```',
+      },
+    ],
+  };
+
+  render(
+    <SessionChatModal
+      open
+      sessionDetail={markdownSession}
+      loading={false}
+      question=""
+      streaming={false}
+      onOpenChange={() => {}}
+      onQuestionChange={() => {}}
+      onSend={() => {}}
+    />,
+  );
+
+  expect(screen.getByRole('heading', { name: '面试重点' })).toBeInTheDocument();
+  expect(screen.getByText('JVM')).toBeInTheDocument();
+  expect(screen.getByText('并发')).toBeInTheDocument();
+  expect(screen.getByText('const answer = 1;')).toBeInTheDocument();
+});
