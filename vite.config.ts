@@ -60,6 +60,10 @@ export default defineConfig(({ mode }) => {
           target: proxyTarget,
           changeOrigin: true,
         },
+        '/interview': {
+          target: proxyTarget,
+          changeOrigin: true,
+        },
       },
     },
   };

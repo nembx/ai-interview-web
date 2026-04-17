@@ -185,3 +185,36 @@ export interface DownloadedFile {
   fileName: string;
 }
 
+// ── Interview ──────────────────────────────────────────
+
+export interface InterviewSessionResponse {
+  id: number;
+  title: string;
+  jdContent: string;
+  status: SessionStatus;
+  createdAt: string;
+}
+
+export interface InterviewMessage {
+  id: number;
+  type: MessageType;
+  content: string;
+  transient?: boolean;
+}
+
+export interface InterviewSessionDetailResponse {
+  sessionId: number;
+  jdContent: string;
+  messages: InterviewMessage[];
+  status: SessionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateInterviewSessionRequest {
+  resumeId?: number;
+  jdContent?: string;
+  title?: string;
+  knowledgeIds?: number[];
+}
+

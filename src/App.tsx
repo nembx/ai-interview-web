@@ -1,18 +1,24 @@
-import { useDeferredValue, useEffect, useState } from 'react';
+import { useDeferredValue, useEffect, useRef, useState } from 'react';
 
 import { AppShell, type AppShellNotice, type AppShellNoticeTone, type AppShellView } from '@/app/app-shell';
+import { InterviewChatModal } from '@/components/interview/interview-chat-modal';
 import { SessionChatModal } from '@/components/rag/session-chat-modal';
+import { InterviewWorkspace } from '@/features/interview/interview-workspace';
 import { KnowledgeWorkspace } from '@/features/knowledge/knowledge-workspace';
 import { OverviewWorkspace } from '@/features/overview/overview-workspace';
 import { RagWorkspace } from '@/features/rag/rag-workspace';
 import { ResumeWorkspace } from '@/features/resume/resume-workspace';
 import { TasksWorkspace } from '@/features/tasks/tasks-workspace';
 import {
+  createInterviewSession,
   createRagSession,
+  deleteInterviewSession,
   deleteKnowledge,
   deleteRagSession,
   deleteResume,
   exportResumePdf,
+  getInterviewSessionDetail,
+  getInterviewSessions,
   getJdMatchResult,
   getKnowledgeById,
   getKnowledgeList,
@@ -24,14 +30,20 @@ import {
   matchResumeWithJd,
   reAnalyzeResume,
   reVectorKnowledge,
+  streamInterviewChat,
   streamRagChat,
+  updateInterviewSessionStatus,
+  updateInterviewSessionTitle,
+  voiceInterviewChat,
   updateRagSessionKnowledge,
   updateRagSessionStatus,
   updateRagSessionTitle,
   uploadKnowledge,
   uploadResume,
-} from './api';
+} from './api/index';
 import type {
+  InterviewSessionDetailResponse,
+  InterviewSessionResponse,
   KnowledgeListItem,
   KnowledgeResponse,
   RagSessionDetailResponse,
@@ -137,6 +149,30 @@ export default function App() {
   const [sessionQuestion, setSessionQuestion] = useState('');
   const [chatStreaming, setChatStreaming] = useState(false);
 
+  // ── Interview state ──────────────────────────────────
+  const [ivSessionTab, setIvSessionTab] = useState<SessionStatus>('ACTIVE');
+  const [ivSessionSearch, setIvSessionSearch] = useState('');
+  const deferredIvSessionSearch = useDeferredValue(ivSessionSearch);
+  const [ivActiveSessions, setIvActiveSessions] = useState<InterviewSessionResponse[]>([]);
+  const [ivArchivedSessions, setIvArchivedSessions] = useState<InterviewSessionResponse[]>([]);
+  const [ivSessionsLoading, setIvSessionsLoading] = useState(false);
+  const [ivSelectedSessionId, setIvSelectedSessionId] = useState<number | null>(null);
+  const [ivSelectedSessionDetail, setIvSelectedSessionDetail] = useState<InterviewSessionDetailResponse | null>(null);
+  const [ivSessionDetailLoading, setIvSessionDetailLoading] = useState(false);
+  const [ivChatOpen, setIvChatOpen] = useState(false);
+  const [ivNewTitle, setIvNewTitle] = useState('');
+  const [ivNewJd, setIvNewJd] = useState('');
+  const [ivNewResumeId, setIvNewResumeId] = useState('');
+  const [ivNewKnowledgeIds, setIvNewKnowledgeIds] = useState<number[]>([]);
+  const [ivTitleDraft, setIvTitleDraft] = useState('');
+  const [ivQuestion, setIvQuestion] = useState('');
+  const [ivChatStreaming, setIvChatStreaming] = useState(false);
+  const [ivVoiceRecording, setIvVoiceRecording] = useState(false);
+  const [ivVoiceProcessing, setIvVoiceProcessing] = useState(false);
+  const ivMediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const ivAudioChunksRef = useRef<Blob[]>([]);
+  const ivAudioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
   const [taskLookupType, setTaskLookupType] = useState<ResourceType>('resume');
   const [taskLookupId, setTaskLookupId] = useState('');
   const [taskLookupLoading, setTaskLookupLoading] = useState(false);
@@ -162,6 +198,7 @@ export default function App() {
   useEffect(() => {
     void refreshKnowledgeList();
     void refreshSessions();
+    void refreshInterviewSessions();
   }, []);
 
   function pushNotice(message: string, tone: AppShellNoticeTone = 'neutral'): void {
@@ -677,6 +714,269 @@ export default function App() {
     }
   }
 
+  // ── Interview handlers ────────────────────────────────
+
+  async function refreshInterviewSessions(): Promise<void> {
+    setIvSessionsLoading(true);
+    try {
+      const [active, archived] = await Promise.all([getInterviewSessions('ACTIVE'), getInterviewSessions('ARCHIVED')]);
+      setIvActiveSessions(active);
+      setIvArchivedSessions(archived);
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    } finally {
+      setIvSessionsLoading(false);
+    }
+  }
+
+  async function loadInterviewDetail(sessionId: number): Promise<void> {
+    setIvSessionDetailLoading(true);
+    setIvSelectedSessionId(sessionId);
+    try {
+      const detail = await getInterviewSessionDetail(sessionId);
+      setIvSelectedSessionDetail(detail);
+      setIvTitleDraft('');
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+      setIvSelectedSessionDetail(null);
+    } finally {
+      setIvSessionDetailLoading(false);
+    }
+  }
+
+  async function openInterviewChat(sessionId: number): Promise<void> {
+    setIvSelectedSessionDetail(null);
+    setIvQuestion('');
+    setIvChatOpen(true);
+    await loadInterviewDetail(sessionId);
+  }
+
+  async function handleCreateInterview(): Promise<void> {
+    try {
+      const resumeId = ivNewResumeId.trim() ? Number.parseInt(ivNewResumeId, 10) : undefined;
+      if (ivNewResumeId.trim() && (resumeId === undefined || Number.isNaN(resumeId))) {
+        pushNotice('请输入有效的简历 ID', 'danger');
+        return;
+      }
+
+      const session = await createInterviewSession({
+        resumeId,
+        jdContent: ivNewJd.trim() || undefined,
+        title: ivNewTitle.trim() || undefined,
+        knowledgeIds: ivNewKnowledgeIds.length > 0 ? ivNewKnowledgeIds : undefined,
+      });
+      setActiveView('interview');
+      setIvSessionTab('ACTIVE');
+      setIvNewTitle('');
+      setIvNewJd('');
+      setIvNewResumeId('');
+      setIvNewKnowledgeIds([]);
+      setIvChatOpen(true);
+      await loadInterviewDetail(session.id);
+      await refreshInterviewSessions();
+      pushNotice('面试会话已创建', 'success');
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    }
+  }
+
+  async function handleIvTitleUpdate(): Promise<void> {
+    if (!ivSelectedSessionDetail) {
+      return;
+    }
+
+    try {
+      await updateInterviewSessionTitle(ivSelectedSessionDetail.sessionId, ivTitleDraft.trim());
+      await refreshInterviewSessions();
+      await loadInterviewDetail(ivSelectedSessionDetail.sessionId);
+      pushNotice('面试标题已更新', 'success');
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    }
+  }
+
+  async function handleIvStatusToggle(): Promise<void> {
+    if (!ivSelectedSessionDetail) {
+      return;
+    }
+
+    const nextStatus: SessionStatus = ivSelectedSessionDetail.status === 'ACTIVE' ? 'ARCHIVED' : 'ACTIVE';
+    try {
+      await updateInterviewSessionStatus(ivSelectedSessionDetail.sessionId, nextStatus);
+      setIvSessionTab(nextStatus);
+      await refreshInterviewSessions();
+      await loadInterviewDetail(ivSelectedSessionDetail.sessionId);
+      pushNotice(nextStatus === 'ARCHIVED' ? '面试已归档' : '面试已恢复', 'success');
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    }
+  }
+
+  async function handleIvDelete(): Promise<void> {
+    if (!ivSelectedSessionDetail || !window.confirm(`确定删除面试 #${ivSelectedSessionDetail.sessionId} 吗？`)) {
+      return;
+    }
+
+    try {
+      await deleteInterviewSession(ivSelectedSessionDetail.sessionId);
+      setIvSelectedSessionId(null);
+      setIvSelectedSessionDetail(null);
+      setIvChatOpen(false);
+      await refreshInterviewSessions();
+      pushNotice('面试会话已删除', 'success');
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    }
+  }
+
+  async function handleIvSendQuestion(): Promise<void> {
+    if (!ivSelectedSessionDetail) {
+      pushNotice('先选择一个面试会话', 'danger');
+      return;
+    }
+
+    if (ivSelectedSessionDetail.status !== 'ACTIVE') {
+      pushNotice('归档面试不能继续', 'danger');
+      return;
+    }
+
+    const question = ivQuestion.trim();
+    if (!question) {
+      pushNotice('请输入回答', 'danger');
+      return;
+    }
+
+    const tempSeed = Date.now();
+    setIvChatStreaming(true);
+    setIvQuestion('');
+    setIvSelectedSessionDetail((current) =>
+      current
+        ? {
+            ...current,
+            messages: [
+              ...current.messages,
+              { id: -tempSeed, type: 'USER', content: question, transient: true },
+              { id: -(tempSeed + 1), type: 'ASSISTANT', content: '', transient: true },
+            ],
+          }
+        : current,
+    );
+
+    try {
+      await streamInterviewChat(ivSelectedSessionDetail.sessionId, question, {
+        onToken: (token) => {
+          setIvSelectedSessionDetail((current) => {
+            if (!current) {
+              return current;
+            }
+
+            const messages = [...current.messages];
+            const lastMessage = messages[messages.length - 1];
+            if (!lastMessage || lastMessage.type !== 'ASSISTANT') {
+              return current;
+            }
+
+            messages[messages.length - 1] = { ...lastMessage, content: `${lastMessage.content}${token}`, transient: true };
+            return { ...current, messages };
+          });
+        },
+      });
+      await refreshInterviewSessions();
+      await loadInterviewDetail(ivSelectedSessionDetail.sessionId);
+    } catch (error) {
+      setIvSelectedSessionDetail((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const messages = [...current.messages];
+        const lastMessage = messages[messages.length - 1];
+        if (!lastMessage || lastMessage.type !== 'ASSISTANT') {
+          return current;
+        }
+
+        messages[messages.length - 1] = {
+          ...lastMessage,
+          content: lastMessage.content || `回答失败：${(error as Error).message}`,
+          transient: true,
+        };
+        return { ...current, messages };
+      });
+      pushNotice((error as Error).message, 'danger');
+    } finally {
+      setIvChatStreaming(false);
+    }
+  }
+
+  async function handleIvVoiceStart(): Promise<void> {
+    if (!ivSelectedSessionDetail || ivSelectedSessionDetail.status !== 'ACTIVE') {
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      ivAudioChunksRef.current = [];
+
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) {
+          ivAudioChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const audioBlob = new Blob(ivAudioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        void sendVoiceToBackend(audioBlob);
+      };
+
+      recorder.start();
+      ivMediaRecorderRef.current = recorder;
+      setIvVoiceRecording(true);
+    } catch (error) {
+      pushNotice(`麦克风权限获取失败：${(error as Error).message}`, 'danger');
+    }
+  }
+
+  function handleIvVoiceStop(): void {
+    const recorder = ivMediaRecorderRef.current;
+    if (recorder && recorder.state !== 'inactive') {
+      recorder.stop();
+    }
+    ivMediaRecorderRef.current = null;
+    setIvVoiceRecording(false);
+  }
+
+  async function sendVoiceToBackend(audioBlob: Blob): Promise<void> {
+    if (!ivSelectedSessionDetail) {
+      return;
+    }
+
+    setIvVoiceProcessing(true);
+    try {
+      const responseBlob = await voiceInterviewChat(ivSelectedSessionDetail.sessionId, audioBlob);
+
+      // Play the returned audio
+      if (ivAudioPlayerRef.current) {
+        const oldSrc = ivAudioPlayerRef.current.src;
+        if (oldSrc) URL.revokeObjectURL(oldSrc);
+      } else {
+        ivAudioPlayerRef.current = new Audio();
+      }
+      const url = URL.createObjectURL(responseBlob);
+      ivAudioPlayerRef.current.src = url;
+      ivAudioPlayerRef.current.play().catch(() => {});
+
+      // Reload messages
+      await refreshInterviewSessions();
+      await loadInterviewDetail(ivSelectedSessionDetail.sessionId);
+    } catch (error) {
+      pushNotice((error as Error).message, 'danger');
+    } finally {
+      setIvVoiceProcessing(false);
+    }
+  }
+
   async function runTaskLookup(resourceType: ResourceType, resourceId: number): Promise<void> {
     setTaskLookupLoading(true);
     try {
@@ -704,6 +1004,10 @@ export default function App() {
 
   function toggleComposerKnowledge(knowledgeId: number): void {
     setComposerKnowledgeIds((current) => (current.includes(knowledgeId) ? current.filter((value) => value !== knowledgeId) : [knowledgeId, ...current].slice(0, 10)));
+  }
+
+  function toggleIvNewKnowledge(knowledgeId: number): void {
+    setIvNewKnowledgeIds((current) => (current.includes(knowledgeId) ? current.filter((value) => value !== knowledgeId) : [...current, knowledgeId]));
   }
 
   function toggleSessionKnowledgeDraft(knowledgeId: number): void {
@@ -741,6 +1045,10 @@ export default function App() {
   });
   const selectedComposerKnowledge = knowledgeList.filter((item) => composerKnowledgeIds.includes(item.id));
   const inFlightTaskCount = recentTasks.filter((item) => item.taskStatus === 'PENDING' || item.taskStatus === 'PROCESSING').length;
+  const visibleIvSessions = (ivSessionTab === 'ACTIVE' ? ivActiveSessions : ivArchivedSessions).filter((item) => {
+    const keyword = deferredIvSessionSearch.trim().toLowerCase();
+    return !keyword || item.title.toLowerCase().includes(keyword) || item.id.toString().includes(keyword);
+  });
 
   return (
     <>
@@ -844,6 +1152,7 @@ export default function App() {
               onRefreshSessions={() => void refreshSessions()}
               onSessionTabChange={setSessionTab}
               onSessionSearchChange={setSessionSearch}
+              onSelectSession={(sessionId) => void loadSessionDetail(sessionId)}
               onOpenSessionChat={(sessionId) => void openSessionChat(sessionId)}
               onSessionTitleDraftChange={setSessionTitleDraft}
               onSessionTitleUpdate={() => void handleSessionTitleUpdate()}
@@ -852,6 +1161,38 @@ export default function App() {
               onSessionKnowledgeDraftToggle={toggleSessionKnowledgeDraft}
               onSessionKnowledgeUpdate={() => void handleSessionKnowledgeUpdate()}
               onOpenCurrentChat={() => setSessionChatOpen(true)}
+            />
+          ),
+          interview: (
+            <InterviewWorkspace
+              newSessionTitle={ivNewTitle}
+              newSessionJd={ivNewJd}
+              newSessionResumeId={ivNewResumeId}
+              newSessionKnowledgeIds={ivNewKnowledgeIds}
+              knowledgeList={knowledgeList}
+              recentResumes={recentResumes}
+              sessionsLoading={ivSessionsLoading}
+              sessionTab={ivSessionTab}
+              sessionSearch={ivSessionSearch}
+              visibleSessions={visibleIvSessions}
+              selectedSessionId={ivSelectedSessionId}
+              selectedSessionDetail={ivSelectedSessionDetail}
+              sessionTitleDraft={ivTitleDraft}
+              onNewSessionTitleChange={setIvNewTitle}
+              onNewSessionJdChange={setIvNewJd}
+              onNewSessionResumeIdChange={setIvNewResumeId}
+              onNewSessionKnowledgeToggle={toggleIvNewKnowledge}
+              onCreateSession={() => void handleCreateInterview()}
+              onRefreshSessions={() => void refreshInterviewSessions()}
+              onSessionTabChange={setIvSessionTab}
+              onSessionSearchChange={setIvSessionSearch}
+              onSelectSession={(sessionId) => void loadInterviewDetail(sessionId)}
+              onOpenSessionChat={(sessionId) => void openInterviewChat(sessionId)}
+              onSessionTitleDraftChange={setIvTitleDraft}
+              onSessionTitleUpdate={() => void handleIvTitleUpdate()}
+              onSessionStatusToggle={() => void handleIvStatusToggle()}
+              onSessionDelete={() => void handleIvDelete()}
+              onOpenCurrentChat={() => setIvChatOpen(true)}
             />
           ),
           tasks: (
@@ -879,6 +1220,20 @@ export default function App() {
         onOpenChange={setSessionChatOpen}
         onQuestionChange={setSessionQuestion}
         onSend={() => void handleSendQuestion()}
+      />
+      <InterviewChatModal
+        open={ivChatOpen}
+        loading={ivSessionDetailLoading}
+        sessionDetail={ivSelectedSessionDetail}
+        question={ivQuestion}
+        streaming={ivChatStreaming}
+        voiceRecording={ivVoiceRecording}
+        voiceProcessing={ivVoiceProcessing}
+        onOpenChange={setIvChatOpen}
+        onQuestionChange={setIvQuestion}
+        onSend={() => void handleIvSendQuestion()}
+        onVoiceStart={() => void handleIvVoiceStart()}
+        onVoiceStop={handleIvVoiceStop}
       />
     </>
   );

@@ -6,12 +6,13 @@ import {
   FileSearch,
   LayoutDashboard,
   MessageSquareText,
+  Mic,
   Sparkles,
 } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 
-export type AppShellView = 'overview' | 'resume' | 'knowledge' | 'rag' | 'tasks';
+export type AppShellView = 'overview' | 'resume' | 'knowledge' | 'rag' | 'interview' | 'tasks';
 export type AppShellNoticeTone = 'neutral' | 'success' | 'danger';
 
 export interface AppShellNotice {
@@ -44,6 +45,7 @@ const navigationItems = [
   { value: 'resume', label: '简历分析', icon: FileSearch },
   { value: 'knowledge', label: '知识库', icon: Database },
   { value: 'rag', label: 'RAG 会话', icon: MessageSquareText },
+  { value: 'interview', label: '模拟面试', icon: Mic },
   { value: 'tasks', label: '任务中心', icon: Activity },
 ] as const satisfies ReadonlyArray<{ value: AppShellView; label: string; icon: LucideIcon }>;
 

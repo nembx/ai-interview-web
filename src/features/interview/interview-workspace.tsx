@@ -1,26 +1,32 @@
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { StatusChip } from '@/shared/ui/app-primitives';
-import type { KnowledgeListItem, RagSessionDetailResponse, RagSessionResponse, SessionStatus } from '@/types';
+import type { InterviewSessionDetailResponse, InterviewSessionResponse, KnowledgeListItem, RecentResumeRecord, SessionStatus } from '@/types';
 import { formatDateTime } from '@/utils';
 
-interface RagWorkspaceProps {
+interface InterviewWorkspaceProps {
   newSessionTitle: string;
+  newSessionJd: string;
+  newSessionResumeId: string;
+  newSessionKnowledgeIds: number[];
   knowledgeList: KnowledgeListItem[];
-  composerKnowledgeIds: number[];
+  recentResumes: RecentResumeRecord[];
   sessionsLoading: boolean;
   sessionTab: SessionStatus;
   sessionSearch: string;
-  visibleSessions: RagSessionResponse[];
+  visibleSessions: InterviewSessionResponse[];
   selectedSessionId: number | null;
-  selectedSessionDetail: RagSessionDetailResponse | null;
+  selectedSessionDetail: InterviewSessionDetailResponse | null;
   sessionTitleDraft: string;
-  sessionKnowledgeDraft: number[];
   onNewSessionTitleChange: (value: string) => void;
-  onComposerKnowledgeToggle: (knowledgeId: number) => void;
+  onNewSessionJdChange: (value: string) => void;
+  onNewSessionResumeIdChange: (value: string) => void;
+  onNewSessionKnowledgeToggle: (knowledgeId: number) => void;
   onCreateSession: () => void;
   onRefreshSessions: () => void;
   onSessionTabChange: (value: SessionStatus) => void;
@@ -31,16 +37,17 @@ interface RagWorkspaceProps {
   onSessionTitleUpdate: () => void;
   onSessionStatusToggle: () => void;
   onSessionDelete: () => void;
-  onSessionKnowledgeDraftToggle: (knowledgeId: number) => void;
-  onSessionKnowledgeUpdate: () => void;
   onOpenCurrentChat: () => void;
 }
 
-export function RagWorkspace(props: RagWorkspaceProps) {
+export function InterviewWorkspace(props: InterviewWorkspaceProps) {
   const {
     newSessionTitle,
+    newSessionJd,
+    newSessionResumeId,
+    newSessionKnowledgeIds,
     knowledgeList,
-    composerKnowledgeIds,
+    recentResumes,
     sessionsLoading,
     sessionTab,
     sessionSearch,
@@ -48,9 +55,10 @@ export function RagWorkspace(props: RagWorkspaceProps) {
     selectedSessionId,
     selectedSessionDetail,
     sessionTitleDraft,
-    sessionKnowledgeDraft,
     onNewSessionTitleChange,
-    onComposerKnowledgeToggle,
+    onNewSessionJdChange,
+    onNewSessionResumeIdChange,
+    onNewSessionKnowledgeToggle,
     onCreateSession,
     onRefreshSessions,
     onSessionTabChange,
@@ -61,15 +69,13 @@ export function RagWorkspace(props: RagWorkspaceProps) {
     onSessionTitleUpdate,
     onSessionStatusToggle,
     onSessionDelete,
-    onSessionKnowledgeDraftToggle,
-    onSessionKnowledgeUpdate,
     onOpenCurrentChat,
   } = props;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold tracking-tight">RAG 会话</h2>
+        <h2 className="text-xl font-semibold tracking-tight">AI 模拟面试</h2>
         <Button variant="outline" size="sm" onClick={onRefreshSessions} disabled={sessionsLoading}>
           {sessionsLoading ? '刷新中...' : '刷新会话'}
         </Button>
@@ -80,21 +86,38 @@ export function RagWorkspace(props: RagWorkspaceProps) {
         <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
           {/* New session */}
           <div className="space-y-2 rounded-lg border border-border bg-card p-3">
-            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">新建会话</h3>
-            <Input value={newSessionTitle} onChange={(event) => onNewSessionTitleChange(event.target.value)} placeholder="标题（可留空）" className="h-8" />
-            {knowledgeList.length === 0 ? (
-              <p className="py-2 text-xs text-muted-foreground">先去知识库上传文档</p>
-            ) : (
-              <div className="thin-scrollbar max-h-[140px] space-y-0.5 overflow-auto">
-                {knowledgeList.map((item) => (
-                  <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
-                    <Checkbox checked={composerKnowledgeIds.includes(item.id)} onCheckedChange={() => onComposerKnowledgeToggle(item.id)} />
-                    <span className="truncate">{item.fileName}</span>
-                  </label>
+            <h3 className="text-xs font-medium uppercase tracking-wider text-muted-foreground">新建面试</h3>
+            <Input value={newSessionTitle} onChange={(e) => onNewSessionTitleChange(e.target.value)} placeholder="标题（可留空）" className="h-8" />
+            <Select value={newSessionResumeId} onValueChange={(value) => onNewSessionResumeIdChange(!value || value === '__none__' ? '' : value)}>
+              <SelectTrigger className="h-8">
+                <SelectValue placeholder="选择简历（可留空）" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">不关联简历</SelectItem>
+                {recentResumes.map((resume) => (
+                  <SelectItem key={resume.id} value={resume.id.toString()}>
+                    #{resume.id} {resume.fileName}
+                  </SelectItem>
                 ))}
-              </div>
-            )}
-            <Button size="sm" className="w-full" onClick={onCreateSession}>创建会话</Button>
+              </SelectContent>
+            </Select>
+            <Textarea value={newSessionJd} onChange={(e) => onNewSessionJdChange(e.target.value)} placeholder="职位 JD（可留空）" rows={3} className="text-sm" />
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">知识源（可留空）</div>
+              {knowledgeList.length === 0 ? (
+                <p className="py-1 text-xs text-muted-foreground">暂无可选知识库</p>
+              ) : (
+                <div className="thin-scrollbar max-h-[140px] space-y-0.5 overflow-auto">
+                  {knowledgeList.map((item) => (
+                    <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                      <Checkbox checked={newSessionKnowledgeIds.includes(item.id)} onCheckedChange={() => onNewSessionKnowledgeToggle(item.id)} />
+                      <span className="truncate">{item.fileName}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+            <Button size="sm" className="w-full" onClick={onCreateSession}>创建面试</Button>
           </div>
 
           {/* Session list */}
@@ -105,11 +128,11 @@ export function RagWorkspace(props: RagWorkspaceProps) {
             </TabsList>
           </Tabs>
 
-          <Input value={sessionSearch} onChange={(event) => onSessionSearchChange(event.target.value)} placeholder="搜索会话..." className="h-8" />
+          <Input value={sessionSearch} onChange={(e) => onSessionSearchChange(e.target.value)} placeholder="搜索会话..." className="h-8" />
 
           <div className="thin-scrollbar max-h-[400px] space-y-1 overflow-auto">
             {visibleSessions.length === 0 ? (
-              <p className="py-6 text-center text-xs text-muted-foreground">暂无会话</p>
+              <p className="py-6 text-center text-xs text-muted-foreground">暂无面试会话</p>
             ) : (
               visibleSessions.map((item) => (
                 <button
@@ -123,7 +146,7 @@ export function RagWorkspace(props: RagWorkspaceProps) {
                 >
                   <div className="min-w-0">
                     <div className="truncate">{item.title}</div>
-                    <div className="text-[11px] text-muted-foreground">#{item.id} · {item.knowledgeBaseIds.length} 个知识源</div>
+                    <div className="text-[11px] text-muted-foreground">#{item.id}</div>
                   </div>
                   <StatusChip label={item.status} tone={item.status === 'ACTIVE' ? 'success' : 'neutral'} />
                 </button>
@@ -138,7 +161,7 @@ export function RagWorkspace(props: RagWorkspaceProps) {
             <div className="space-y-5 rounded-lg border border-border bg-card p-5">
               {/* Title */}
               <div className="flex items-center gap-3">
-                <Input value={sessionTitleDraft} onChange={(event) => onSessionTitleDraftChange(event.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} className="flex-1" />
+                <Input value={sessionTitleDraft} onChange={(e) => onSessionTitleDraftChange(e.target.value)} disabled={selectedSessionDetail.status !== 'ACTIVE'} className="flex-1" />
                 <Button size="sm" variant="secondary" onClick={onSessionTitleUpdate} disabled={selectedSessionDetail.status !== 'ACTIVE'}>保存标题</Button>
               </div>
 
@@ -157,33 +180,20 @@ export function RagWorkspace(props: RagWorkspaceProps) {
                 </div>
               </div>
 
-              {/* Knowledge sources */}
-              <div>
-                <h4 className="mb-2 text-sm font-medium">知识源</h4>
-                <div className="thin-scrollbar max-h-[200px] space-y-0.5 overflow-auto">
-                  {knowledgeList.map((item) => (
-                    <label key={item.id} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
-                      <Checkbox
-                        checked={sessionKnowledgeDraft.includes(item.id)}
-                        disabled={selectedSessionDetail.status !== 'ACTIVE'}
-                        onCheckedChange={() => onSessionKnowledgeDraftToggle(item.id)}
-                      />
-                      <span className="flex-1 truncate">{item.fileName}</span>
-                      <span className="text-xs text-muted-foreground">{item.category}</span>
-                    </label>
-                  ))}
+              {/* JD content */}
+              {selectedSessionDetail.jdContent && (
+                <div>
+                  <h4 className="mb-2 text-sm font-medium">职位 JD</h4>
+                  <p className="whitespace-pre-wrap rounded-md bg-muted/50 p-3 text-sm text-muted-foreground">{selectedSessionDetail.jdContent}</p>
                 </div>
-                <Button size="sm" variant="secondary" className="mt-2" onClick={onSessionKnowledgeUpdate} disabled={selectedSessionDetail.status !== 'ACTIVE'}>
-                  更新知识源
-                </Button>
-              </div>
+              )}
 
               {/* Open chat */}
-              <Button className="w-full" onClick={onOpenCurrentChat}>打开聊天</Button>
+              <Button className="w-full" onClick={onOpenCurrentChat}>打开面试</Button>
             </div>
           ) : (
             <div className="flex items-center justify-center rounded-lg border border-dashed border-border p-12">
-              <p className="text-sm text-muted-foreground">选择或创建一个会话开始</p>
+              <p className="text-sm text-muted-foreground">选择或创建一个面试会话开始</p>
             </div>
           )}
         </div>
