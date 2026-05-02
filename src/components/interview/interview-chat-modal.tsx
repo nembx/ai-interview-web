@@ -20,6 +20,7 @@ interface InterviewChatModalProps {
   streaming: boolean
   voiceRecording: boolean
   voiceProcessing: boolean
+  replyAudio: Blob | null
   onOpenChange: (open: boolean) => void
   onQuestionChange: (value: string) => void
   onSend: () => void
@@ -63,6 +64,7 @@ function InterviewChatModal({
   streaming,
   voiceRecording,
   voiceProcessing,
+  replyAudio,
   onOpenChange,
   onQuestionChange,
   onSend,
@@ -88,11 +90,23 @@ function InterviewChatModal({
     .map((message) => `${message.id}:${message.type}:${message.content}`)
     .join("|") ?? ""
 
-  // Cleanup audio object URL on unmount / change
+  // Auto-play audio reply from backend TTS
   useEffect(() => {
+    if (!replyAudio) return
+    const url = URL.createObjectURL(replyAudio)
+    setAudioSrc(url)
     return () => {
-      if (audioSrc) URL.revokeObjectURL(audioSrc)
+      URL.revokeObjectURL(url)
     }
+  }, [replyAudio])
+
+  // Play after the audio element mounts with the new src
+  useEffect(() => {
+    if (!audioSrc) return
+    const audio = audioRef.current
+    if (!audio) return
+    audio.load()
+    audio.play().catch(() => {})
   }, [audioSrc])
 
   function updateShouldFollowScroll() {
@@ -143,22 +157,6 @@ function InterviewChatModal({
     hasSnappedForSessionRef.current = true
   }, [detail, messageSignature, open, shouldFollowScroll, streaming])
 
-  function playAudio(blob: Blob) {
-    if (audioSrc) URL.revokeObjectURL(audioSrc)
-    const url = URL.createObjectURL(blob)
-    setAudioSrc(url)
-    if (audioRef.current) {
-      audioRef.current.src = url
-      audioRef.current.play().catch(() => {})
-    }
-  }
-
-  // Expose playAudio to parent via a stable callback stored on the DOM element
-  // We use a simpler approach: parent passes audioBlob via a prop-like mechanism
-  // Actually, we'll just expose playAudio through a ref-like pattern
-  // Let's keep it simple: parent will pass onAudioReady, but for now the parent
-  // handles this through the voiceProcessing flow and we play from App.
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -182,6 +180,9 @@ function InterviewChatModal({
         </DialogHeader>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 p-4 sm:p-6">
+          {/* Hidden audio player — must stay mounted across loading transitions */}
+          <audio ref={audioRef} src={audioSrc ?? undefined} autoPlay className="hidden" />
+
           {loading ? (
             <p className="text-sm text-muted-foreground">正在加载面试会话...</p>
           ) : !detail ? (
@@ -237,11 +238,6 @@ function InterviewChatModal({
                   <p className="text-sm text-muted-foreground">面试尚未开始，发送消息或录音开始面试</p>
                 )}
               </div>
-
-              {/* Audio player for voice responses */}
-              {audioSrc && (
-                <audio ref={audioRef} controls src={audioSrc} className="w-full h-8" />
-              )}
 
               <div className="flex flex-col gap-1.5">
                 <span className="text-[13px] font-medium text-muted-foreground">回答</span>

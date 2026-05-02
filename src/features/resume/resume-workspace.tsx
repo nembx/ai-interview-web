@@ -153,7 +153,7 @@ export function ResumeWorkspace(props: ResumeWorkspaceProps) {
                     {resumeReanalyzing ? '分析中...' : '重新分析'}
                   </Button>
                   <Button size="sm" variant="secondary" onClick={onResumeExport} disabled={!resumeDetail || resumeExporting}>
-                    {resumeExporting ? '导出中...' : '导出 PDF'}
+                    {resumeExporting ? '导出中...' : '导出简历分析 PDF'}
                   </Button>
                   <Button size="sm" variant="destructive" onClick={onResumeDelete} disabled={resumeDeleting}>
                     {resumeDeleting ? '删除中...' : '删除'}

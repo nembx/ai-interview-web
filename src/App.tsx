@@ -169,9 +169,9 @@ export default function App() {
   const [ivChatStreaming, setIvChatStreaming] = useState(false);
   const [ivVoiceRecording, setIvVoiceRecording] = useState(false);
   const [ivVoiceProcessing, setIvVoiceProcessing] = useState(false);
+  const [ivReplyAudio, setIvReplyAudio] = useState<Blob | null>(null);
   const ivMediaRecorderRef = useRef<MediaRecorder | null>(null);
   const ivAudioChunksRef = useRef<Blob[]>([]);
-  const ivAudioPlayerRef = useRef<HTMLAudioElement | null>(null);
 
   const [taskLookupType, setTaskLookupType] = useState<ResourceType>('resume');
   const [taskLookupId, setTaskLookupId] = useState('');
@@ -954,18 +954,8 @@ export default function App() {
 
     setIvVoiceProcessing(true);
     try {
-      const responseBlob = await voiceInterviewChat(ivSelectedSessionDetail.sessionId, audioBlob);
-
-      // Play the returned audio
-      if (ivAudioPlayerRef.current) {
-        const oldSrc = ivAudioPlayerRef.current.src;
-        if (oldSrc) URL.revokeObjectURL(oldSrc);
-      } else {
-        ivAudioPlayerRef.current = new Audio();
-      }
-      const url = URL.createObjectURL(responseBlob);
-      ivAudioPlayerRef.current.src = url;
-      ivAudioPlayerRef.current.play().catch(() => {});
+      const replyAudio = await voiceInterviewChat(ivSelectedSessionDetail.sessionId, audioBlob);
+      setIvReplyAudio(replyAudio);
 
       // Reload messages
       await refreshInterviewSessions();
@@ -1229,6 +1219,7 @@ export default function App() {
         streaming={ivChatStreaming}
         voiceRecording={ivVoiceRecording}
         voiceProcessing={ivVoiceProcessing}
+        replyAudio={ivReplyAudio}
         onOpenChange={setIvChatOpen}
         onQuestionChange={setIvQuestion}
         onSend={() => void handleIvSendQuestion()}

@@ -68,19 +68,7 @@ export async function voiceInterviewChat(
     throw new Error(text || `HTTP ${response.status}`);
   }
 
-  if (!response.body) {
-    return response.blob();
-  }
-
-  const reader = response.body.getReader();
-  const chunks: BlobPart[] = [];
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    chunks.push(value);
-  }
-
   const contentType = response.headers.get('content-type') || 'audio/mpeg';
-  return new Blob(chunks, { type: contentType });
+  const buffer = await response.arrayBuffer();
+  return new Blob([buffer], { type: contentType });
 }
